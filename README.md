@@ -99,6 +99,69 @@ curl http://localhost:9001/api/latest/ul
 
 ## Deployment på Raspberry Pi
 
+### Native ARM64-byggen från GitHub Actions
+
+1. **Trigga workflowet**  
+   Kör Actions-jobbet **“Native Image Build (ARM64)”** (antingen från UI eller via `gh workflow run native-arm64.yml`). Sätt `create_release=true` om du vill få en release med binären bifogad.
+
+2. **Hämta binären**  
+   - **Från release:**  
+
+     ~~~~bash
+     VERSION=v1.0.0
+     wget https://github.com/svante/livetrafik-ws-server/releases/download/$VERSION/trafik-websocket-server-linux-arm64 \
+       -O trafik-websocket-server-linux-arm64
+     chmod +x trafik-websocket-server-linux-arm64
+     ~~~~
+   - **Från workflow-artifact (utan release):**  
+
+     ~~~~bash
+     gh run download <run-id> -n trafik-websocket-server-arm64 -D target
+     chmod +x target/trafik-websocket-server-linux-arm64
+     ~~~~
+     (kräver `gh auth login` och val av ARM64-run)
+
+3. **Placera binären på Pi**  
+
+   ~~~~bash
+   scp trafik-websocket-server-linux-arm64 pi@raspberrypi.local:/home/pi/bin/
+   ssh pi@raspberrypi.local chmod +x /home/pi/bin/trafik-websocket-server-linux-arm64
+   ~~~~
+
+4. **systemd-tjänst för native-binär**
+
+   ~~~~ini
+   [Unit]
+   Description=Trafik Live Native Server
+   After=network.target
+
+   [Service]
+   Type=simple
+   User=pi
+   WorkingDirectory=/home/pi
+   ExecStart=/home/pi/bin/trafik-websocket-server-linux-arm64
+   Environment=SUPABASE_ANON_KEY=your-anon-key-here
+   Restart=always
+   RestartSec=5
+   NoNewPrivileges=true
+   ProtectSystem=strict
+   ProtectHome=read-only
+   ReadWritePaths=/home/pi/logs
+
+   [Install]
+   WantedBy=multi-user.target
+   ~~~~
+
+5. **Hantera tjänsten**
+
+   ~~~~bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable trafik-ws
+   sudo systemctl restart trafik-ws     # ny binär
+   sudo systemctl status trafik-ws
+   journalctl -fu trafik-ws
+   ~~~~
+
 ### 1. Installera Java
 
 ~~~~bash
