@@ -1,4 +1,5 @@
 [![CI Build & Test](https://github.com/kumlien/livetrafik-ws-server/actions/workflows/ci.yml/badge.svg)](https://github.com/kumlien/livetrafik-ws-server/actions/workflows/ci.yml)
+[![Native Image Build (ARM64)](https://github.com/kumlien/livetrafik-ws-server/actions/workflows/native-arm64.yml/badge.svg)](https://github.com/kumlien/livetrafik-ws-server/actions/workflows/native-arm64.yml)
 # Trafik Live – Java WebSocket Server
 
 Lokal WebSocket-relay för realtidsdata från Supabase till webbklienter via STOMP/SockJS.
