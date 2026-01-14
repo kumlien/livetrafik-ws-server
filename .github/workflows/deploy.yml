@@ -1,0 +1,60 @@
+name: Deploy to Raspberry Pi
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tag or version to deploy (e.g., v1.0.0)'
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build deployment JAR
+        run: mvn --batch-mode clean package -DskipTests
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PI_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PI_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Stop service on Raspberry Pi
+        run: |
+          ssh -o StrictHostKeyChecking=yes ${{ secrets.PI_USER }}@${{ secrets.PI_HOST }} \
+            "sudo systemctl stop trafik-ws || true"
+
+      - name: Copy JAR to Raspberry Pi
+        run: |
+          scp target/*.jar ${{ secrets.PI_USER }}@${{ secrets.PI_HOST }}:${{ secrets.PI_DEPLOY_PATH }}/trafik-ws.jar
+
+      - name: Start service on Raspberry Pi
+        run: |
+          ssh ${{ secrets.PI_USER }}@${{ secrets.PI_HOST }} "sudo systemctl start trafik-ws"
+
+      - name: Health check
+        run: |
+          sleep 10
+          ssh ${{ secrets.PI_USER }}@${{ secrets.PI_HOST }} "curl -sf http://localhost:9001/api/health"
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Deploy summary" >> $GITHUB_STEP_SUMMARY
+          echo "Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "Target: ${{ secrets.PI_HOST }}" >> $GITHUB_STEP_SUMMARY

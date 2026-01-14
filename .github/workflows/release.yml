@@ -1,0 +1,47 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up GraalVM Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: graalvm
+          java-version: '25'
+          cache: maven
+          check-latest: true
+
+      - name: Build release JAR
+        run: mvn --batch-mode clean package -DskipTests
+
+      - name: Capture JAR filename
+        id: jar
+        run: |
+          FILE=$(ls target/*.jar | head -1)
+          echo "filename=$FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.jar.outputs.filename }}
+          generate_release_notes: true
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Release summary" >> $GITHUB_STEP_SUMMARY
+          echo "Tag: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "Artifact: ${{ steps.jar.outputs.filename }}" >> $GITHUB_STEP_SUMMARY

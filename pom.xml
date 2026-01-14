@@ -28,6 +28,7 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+		<native.buildtools.version>0.10.3</native.buildtools.version>
 	</properties>
 	<dependencies>
 
@@ -80,8 +81,7 @@
             <artifactId>maven-compiler-plugin</artifactId>
             <version>3.12.0</version>
             <configuration>
-                <source>25</source>
-                <target>25</target>
+                <release>25</release>
                 <annotationProcessorPaths>
                     <path>
                         <groupId>org.projectlombok</groupId>
@@ -91,6 +91,19 @@
                 </annotationProcessorPaths>
             </configuration>
         </plugin>
+			<plugin>
+				<groupId>org.graalvm.buildtools</groupId>
+				<artifactId>native-maven-plugin</artifactId>
+				<version>${native.buildtools.version}</version>
+				<extensions>true</extensions>
+				<executions>
+					<execution>
+						<goals>
+							<goal>build</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 	</build>
 
