@@ -106,6 +106,7 @@
 						<extensions>true</extensions>
 						<configuration>
 							<mainClass>se.kumliens.livetrafik.LivetrafikWsServerApplication</mainClass>
+							<imageName>trafik-websocket-server-linux-arm64</imageName>
 						</configuration>
 						<executions>
 							<execution>
