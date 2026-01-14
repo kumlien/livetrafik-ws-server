@@ -1,6 +1,9 @@
 spring:
   application:
     name: livetrafik-ws-server
+  threads:
+    virtual:
+      enabled: true
 
 server:
   port: 9001
@@ -12,5 +15,10 @@ supabase:
 
 logging:
   level:
-    se.kumliens.livetrafik: DEBUG
+    se.kumliens.livetrafik: INFO
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'

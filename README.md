@@ -56,6 +56,11 @@ Lokal WebSocket-relay för realtidsdata från Supabase till webbklienter via STO
 ### application.yml
 
 ~~~~yaml
+spring:
+  threads:
+    virtual:
+      enabled: true
+
 server:
   port: 9001
 
@@ -69,6 +74,8 @@ logging:
     se.trafiklive: DEBUG
     org.springframework.web.socket: INFO
 ~~~~
+
+> **Bakom kulisserna:** `spring.threads.virtual.enabled=true` gör att Spring Boot använder Virtual Threads för inkommande HTTP/WebSocket-förfrågningar, vilket minskar trådtrycket på Pi:n.
 
 ### Miljövariabler
 

@@ -1,26 +1,28 @@
 package se.kumliens.livetrafik;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
-import org.java_websocket.client.WebSocketClient;
-import org.java_websocket.handshake.ServerHandshake;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
 import java.net.URI;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-@Service
-public class SupabaseRealtimeService {
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.handshake.ServerHandshake;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
-    private static final Logger log = LoggerFactory.getLogger(SupabaseRealtimeService.class);
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class SupabaseRealtimeService {
 
     private final VehicleCacheService vehicleCacheService;
     private final ObjectMapper objectMapper;
@@ -38,11 +40,6 @@ public class SupabaseRealtimeService {
     private ScheduledExecutorService heartbeatExecutor;
     private final AtomicInteger messageRef = new AtomicInteger(1);
 
-    public SupabaseRealtimeService(VehicleCacheService vehicleCacheService, ObjectMapper objectMapper) {
-        this.vehicleCacheService = vehicleCacheService;
-        this.objectMapper = objectMapper;
-    }
-    
     @PostConstruct
     public void connect() {
         String fullUrl = supabaseWsUrl + "?apikey=" + supabaseAnonKey + "&vsn=1.0.0";
