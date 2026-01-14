@@ -47,8 +47,8 @@ Lokal WebSocket-relay för realtidsdata från Supabase till webbklienter via STO
 
 ## Krav
 
-- Java 17+
-- Maven 3.8+
+- Java 25 (Temurin eller GraalVM)
+- Maven 3.9+
 - Raspberry Pi 5 (eller annan Linux-maskin)
 
 ## Konfiguration
@@ -79,17 +79,17 @@ export SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIs..."
 ## Bygg
 
 ~~~~bash
-git clone https://github.com/your-org/trafik-ws-server.git
-cd trafik-ws-server
-mvn clean package -DskipTests
+git clone https://github.com/kumlien/livetrafik-ws-server.git
+cd livetrafik-ws-server
+./mvnw clean package -DskipTests
 ~~~~
 
-JAR-filen hamnar i `target/trafik-ws-server-1.0.0.jar`.
+JAR-filen hamnar i `target/livetrafik-ws-server-0.0.1-SNAPSHOT.jar` (eller motsvarande version enligt `pom.xml`).
 
 ## Kör lokalt
 
 ~~~~bash
-java -jar target/trafik-ws-server-1.0.0.jar
+java -jar target/livetrafik-ws-server-0.0.1-SNAPSHOT.jar
 ~~~~
 
 Testa:
