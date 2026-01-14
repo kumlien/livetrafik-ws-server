@@ -118,7 +118,10 @@ curl http://localhost:9001/api/latest/ul
    - **Från workflow-artifact (utan release):**  
 
      ~~~~bash
-     gh run download <run-id> -n trafik-websocket-server-arm64 -D target
+     gh run download <run-id> \
+       --repo kumlien/livetrafik-ws-server \
+       -n trafik-websocket-server-arm64 \
+       -D target
      chmod +x target/trafik-websocket-server-linux-arm64
      ~~~~
      (kräver `gh auth login` och val av ARM64-run)
@@ -152,6 +155,32 @@ curl http://localhost:9001/api/latest/ul
 
    [Install]
    WantedBy=multi-user.target
+   ~~~~
+
+   Skapa filen direkt på Pi:
+
+   ~~~~bash
+   sudo tee /etc/systemd/system/trafik-ws.service > /dev/null <<'EOF'
+   [Unit]
+   Description=Trafik Live Native Server
+   After=network.target
+
+   [Service]
+   Type=simple
+   User=pi
+   WorkingDirectory=/home/pi
+   ExecStart=/home/pi/bin/trafik-websocket-server-linux-arm64
+   Environment=SUPABASE_ANON_KEY=your-anon-key-here
+   Restart=always
+   RestartSec=5
+   NoNewPrivileges=true
+   ProtectSystem=strict
+   ProtectHome=read-only
+   ReadWritePaths=/home/pi/logs
+
+   [Install]
+   WantedBy=multi-user.target
+   EOF
    ~~~~
 
 5. **Hantera tjänsten**
