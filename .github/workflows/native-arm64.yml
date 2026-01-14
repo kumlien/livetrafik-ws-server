@@ -34,8 +34,8 @@ jobs:
       - name: Build native image
         run: |
           mvn --batch-mode -Pnative -DskipTests \
-            native:compile-no-fork \
-            -Dnative.image-name=trafik-websocket-server-linux-arm64
+            -Dnative.image-name=trafik-websocket-server-linux-arm64 \
+            package
 
       - name: Verify binary
         run: |
