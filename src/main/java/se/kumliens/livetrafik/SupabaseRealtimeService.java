@@ -1,6 +1,9 @@
 package se.kumliens.livetrafik;
 
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -9,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,7 +22,14 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import se.kumliens.livetrafik.VehicleCacheService.CacheMetrics;
+import se.kumliens.livetrafik.model.VehicleBroadcastPayload;
 
+/**
+ * Connects to Supabase Realtime, subscribes to regional vehicle channels, and
+ * forwards incoming payloads to STOMP topics while keeping the local vehicle cache
+ * in sync for typed feeds.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -26,6 +37,7 @@ public class SupabaseRealtimeService {
 
     private final VehicleCacheService vehicleCacheService;
     private final ObjectMapper objectMapper;
+    private final SimpMessagingTemplate messagingTemplate;
     
     @Value("${supabase.url}")
     private String supabaseWsUrl;
@@ -33,23 +45,39 @@ public class SupabaseRealtimeService {
     @Value("${supabase.anon-key}")
     private String supabaseAnonKey;
     
-    @Value("${supabase.channel}")
-    private String channelName;
+    @Value("${supabase.channel:}")
+    private String channelNamesProperty;
+    
+    @Value("${supabase.regions:ul,sl}")
+    private String regionsProperty;
+    
+    @Value("${supabase.vehicle-types:bus,train}")
+    private String vehicleTypesProperty;
     
     private WebSocketClient wsClient;
     private ScheduledExecutorService heartbeatExecutor;
     private final AtomicInteger messageRef = new AtomicInteger(1);
+    private List<String> channelNames = List.of();
+    private List<String> activeRegions = List.of("ul", "sl");
+    private List<String> vehicleTypes = List.of("bus", "train");
 
+    /**
+     * Establishes the WebSocket connection to Supabase Realtime and subscribes to
+     * all configured region/type channels.
+     */
     @PostConstruct
     public void connect() {
         String fullUrl = supabaseWsUrl + "?apikey=" + supabaseAnonKey + "&vsn=1.0.0";
+        this.activeRegions = resolveList(regionsProperty, List.of("ul", "sl"));
+        this.vehicleTypes = resolveList(vehicleTypesProperty, List.of("bus", "train"));
+        this.channelNames = resolveChannelNames();
         
         try {
             wsClient = new WebSocketClient(new URI(fullUrl)) {
                 @Override
                 public void onOpen(ServerHandshake handshake) {
                     log.info("Connected to Supabase Realtime");
-                    joinChannel();
+                    joinChannels();
                     startHeartbeat();
                 }
 
@@ -78,25 +106,28 @@ public class SupabaseRealtimeService {
         }
     }
     
-    private void joinChannel() {
-        // Supabase Realtime Phoenix protocol - join broadcast channel
-        String joinMessage = String.format("""
-            {
-                "topic": "realtime:%s",
-                "event": "phx_join",
-                "payload": {
-                    "config": {
-                        "broadcast": {
-                            "self": false
+    private void joinChannels() {
+        channelNames.forEach(channel -> {
+            String joinMessage = String.format("""
+                {
+                    "topic": "realtime:%s",
+                    "event": "phx_join",
+                    "payload": {
+                        "config": {
+                            "broadcast": {
+                                "self": false
+                            }
                         }
-                    }
-                },
-                "ref": "%d"
-            }
-            """, channelName, messageRef.getAndIncrement());
-        
-        wsClient.send(joinMessage);
-        log.info("Sent join request for channel: {}", channelName);
+                    },
+                    "ref": "%d"
+                }
+                """, channel, messageRef.getAndIncrement());
+
+            wsClient.send(joinMessage);
+            log.info("Sent join request for channel: {}", channel);
+        });
+
+        log.info("Supabase Realtime: subscribing to {} channels", channelNames.size());
     }
     
     private void startHeartbeat() {
@@ -123,31 +154,56 @@ public class SupabaseRealtimeService {
             String event = root.path("event").asText();
             String topic = root.path("topic").asText();
             
-            log.debug("Received event: {} on topic: {}", event, topic);
-            
             if ("broadcast".equals(event)) {
                 JsonNode payload = root.path("payload");
                 String broadcastEvent = payload.path("event").asText();
                 
                 if ("vehicles".equals(broadcastEvent)) {
                     JsonNode vehiclePayload = payload.path("payload");
-                    String region = vehiclePayload.path("region").asText();
-                    JsonNode vehiclesNode = vehiclePayload.path("vehicles");
-                    
-                    if (vehiclesNode.isArray()) {
-                        log.info("Received {} vehicles for region: {}", 
-                            vehiclesNode.size(), region);
-                        vehicleCacheService.updateVehicles(region, vehiclesNode);
-                    }
+                    handleVehiclePayload(topic, vehiclePayload);
                 }
             } else if ("phx_reply".equals(event)) {
                 String status = root.path("payload").path("status").asText();
-                log.info("Channel join status: {}", status);
+                log.info("Channel join status: {} ({})", status, topic);
             }
             
         } catch (Exception e) {
             log.error("Error parsing message: {}", message, e);
         }
+    }
+
+    /**
+     * Maps an incoming Supabase channel payload to the equivalent STOMP topic
+     * and updates the cache for typed feeds.
+     */
+    private void handleVehiclePayload(String topic, JsonNode vehiclePayload) {
+        String channel = extractChannel(topic);
+        if (channel == null) {
+            log.warn("Unable to extract channel from topic {}", topic);
+            return;
+        }
+
+        // Broadcast upstream payload to clients regardless of vehicles/removed entries
+        String stompTopic = "/topic/" + channel;
+        messagingTemplate.convertAndSend(stompTopic, vehiclePayload);
+        log.debug("Forwarded payload to {}", stompTopic);
+
+        ChannelDescriptor descriptor = ChannelDescriptor.from(channel);
+        if (descriptor.type() == null) {
+            // Combined region feed – no cache update to avoid duplicate legacy broadcasts
+            return;
+        }
+
+        VehicleBroadcastPayload dto = objectMapper.convertValue(vehiclePayload, VehicleBroadcastPayload.class);
+        dto.backfillRegionAndType(descriptor.region(), descriptor.type());
+
+        CacheMetrics metrics = vehicleCacheService.applyDelta(dto);
+        log.info("[STOMP] vehicles update: region={} type={} received={} removed={} cacheSize={}",
+            dto.getRegion(),
+            dto.getVehicleType(),
+            dto.getVehicles().size(),
+            dto.getRemovedVehicleIds().size(),
+            metrics.cacheSize());
     }
     
     private void scheduleReconnect() {
@@ -155,6 +211,61 @@ public class SupabaseRealtimeService {
             log.info("Attempting to reconnect...");
             connect();
         }, 5, TimeUnit.SECONDS);
+    }
+
+    private List<String> resolveChannelNames() {
+        List<String> explicitChannels = resolveList(channelNamesProperty, List.of());
+        if (!explicitChannels.isEmpty()) {
+            return explicitChannels;
+        }
+
+        List<String> channels = new ArrayList<>();
+        for (String region : activeRegions) {
+            for (String type : vehicleTypes) {
+                channels.add(region + "/vehicles/" + type);
+            }
+        }
+        return channels;
+    }
+
+    private List<String> resolveList(String csv, List<String> defaults) {
+        if (csv == null || csv.isBlank()) {
+            return defaults;
+        }
+        List<String> values = Arrays.stream(csv.split(","))
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .toList();
+        return values.isEmpty() ? defaults : values;
+    }
+
+    private String extractChannel(String topic) {
+        if (topic == null) {
+            return null;
+        }
+        return topic.startsWith("realtime:") ? topic.substring("realtime:".length()) : topic;
+    }
+
+    private record ChannelDescriptor(String region, String type) {
+        static ChannelDescriptor from(String channel) {
+            if (channel == null || channel.isBlank()) {
+                return new ChannelDescriptor("ul", "bus");
+            }
+            String[] slashParts = channel.split("/");
+            if (slashParts.length >= 3) {
+                return new ChannelDescriptor(slashParts[0], slashParts[2]);
+            }
+            if (slashParts.length == 2) {
+                return new ChannelDescriptor(slashParts[0], null);
+            }
+
+            // Fallback for legacy dash-separated names
+            String[] dashParts = channel.split("-");
+            if (dashParts.length >= 3) {
+                return new ChannelDescriptor(dashParts[2], dashParts[dashParts.length - 1]);
+            }
+            return new ChannelDescriptor(dashParts[0], "bus");
+        }
     }
     
     @PreDestroy

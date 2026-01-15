@@ -11,7 +11,8 @@ server:
 supabase:
   url: wss://wuwzjgqegoipxkoxjfhy.supabase.co/realtime/v1/websocket
   anon-key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1d3pqZ3FlZ29pcHhrb3hqZmh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3MDY2NzMsImV4cCI6MjA4MTI4MjY3M30.UULry3d3-bCr-7dJOR_A9aOTs7--MlXsBueO-yi-gXQ
-  channel: vehicle-updates
+  regions: ul,sl
+  vehicle-types: bus,train
 
 logging:
   level:

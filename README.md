@@ -1,5 +1,6 @@
-[![CI Build & Test](https://github.com/kumlien/livetrafik-ws-server/actions/workflows/ci.yml/badge.svg)](https://github.com/kumlien/livetrafik-ws-server/actions/workflows/ci.yml)
+[![CI Build & Test](https://github.com/kumlien/livetrafik-ws-server/actions/workflows/ci.yml/badge.svg)](https://github.com/kumlien/livetrafik-ws-server/actions/workflows/ci.yml)  
 [![Native Image Build (ARM64)](https://github.com/kumlien/livetrafik-ws-server/actions/workflows/native-arm64.yml/badge.svg)](https://github.com/kumlien/livetrafik-ws-server/actions/workflows/native-arm64.yml)
+
 # Trafik Live – Java WebSocket Server
 
 Lokal WebSocket-relay för realtidsdata från Supabase till webbklienter via STOMP/SockJS.
@@ -39,11 +40,12 @@ Lokal WebSocket-relay för realtidsdata från Supabase till webbklienter via STO
 
 ## Funktioner
 
-- Prenumererar på Supabase Realtime (`vehicle-updates` channel)
+- Prenumererar på Supabase Realtime (slash-baserade kanaler `region/vehicles/{type}`)
+- Remove-first cache med delta-merge (stödjer `removed_vehicle_ids`)
 - Exponerar STOMP/SockJS WebSocket på `/ws`
 - REST API: `/api/health`, `/api/latest/{region}`
-- Automatisk återanslutning vid avbrott
-- In-memory cache för senaste fordonsdata
+- Automatisk återanslutning + strukturerade loggar per region/typ
+- In-memory cache för senaste fordonsdata med stale-cleanup fallback
 
 ## Krav
 
@@ -67,7 +69,9 @@ server:
 supabase:
   url: https://your-project.supabase.co
   anon-key: ${SUPABASE_ANON_KEY}
-  channel: vehicle-updates
+  regions: ul,sl
+  vehicle-types: bus,train
+  # (valfritt) channel: vehicle-updates-ul-bus,vehicle-updates-ul-train
 
 logging:
   level:
@@ -81,7 +85,41 @@ logging:
 
 ~~~~bash
 export SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIs..."
+export SUPABASE_REGIONS="ul,sl"
+export SUPABASE_VEHICLE_TYPES="bus,train"
+# valfritt: overridea kanaler helt
+# export SUPABASE_CHANNEL="vehicle-updates-vt-bus,vehicle-updates-vt-train"
 ~~~~
+
+## Vehicle delta handling (remove-first)
+
+Supabase Edge Functions skickar deltapayloads per kanal:
+
+~~~~json
+{
+  "vehicles": [ /* delta-updates */ ],
+  "removed_vehicle_ids": ["vehicle_1", "vehicle_2"],
+  "region": "ul",
+  "vehicleType": "bus",
+  "timestamp": 1730000000000
+}
+~~~~
+
+- `vehicles` och `removed_vehicle_ids` är valfria. Meddelanden kan innehålla endast borttagningar eller endast uppdateringar.
+- Java-servern parsar payloaden till `VehicleBroadcastPayload` och kör **remove-first, merge-second** innan stale-cleanup.
+- Cache-metrik loggas per region/typ:
+
+~~~~text
+[STOMP] vehicles update: region=ul type=bus received=45 removed=3 cacheSize=512
+~~~~
+
+Checklistan för att verifiera i produktion:
+
+1. Loggar ovan ska visas för varje aktiv kanal.
+2. `removed` bör vara >0 när `removed_vehicle_ids` skickas.
+3. `cacheSize` ska minska när fordon tas bort och öka när nya anländer.
+
+> Alla detaljer och edge cases finns i `.windsurf/rules/java-vehicle-broadcast.md`.
 
 ## Bygg
 
@@ -304,7 +342,11 @@ sudo systemctl start cloudflared
 
 - **Endpoint:** `/ws`
 - **Protokoll:** STOMP över SockJS
-- **Topic:** `/topic/vehicles-{region}`
+- **Topics:**
+  - `/topic/{region}/vehicles/bus` – endast bussar för regionen
+  - `/topic/{region}/vehicles/train` – endast tåg för regionen
+  - `/topic/vehicles-{region}` (legacy) – alla fordon per region
+  - `/topic/vehicles` (deprecated) – global feed av alla fordon
 
 Klientexempel (JavaScript):
 
@@ -315,9 +357,9 @@ import { Client } from '@stomp/stompjs';
 const client = new Client({
   webSocketFactory: () => new SockJS('http://pi.local:9001/ws'),
   onConnect: () => {
-    client.subscribe('/topic/vehicles-ul', (message) => {
+    client.subscribe('/topic/ul/vehicles/bus', (message) => {
       const data = JSON.parse(message.body);
-      console.log('Vehicles:', data.vehicles);
+      console.log('Bussar:', data.vehicles);
     });
   },
 });
