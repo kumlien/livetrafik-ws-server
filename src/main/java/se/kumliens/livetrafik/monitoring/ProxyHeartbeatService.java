@@ -11,34 +11,30 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import se.kumliens.livetrafik.SupabaseRealtimeService;
 import se.kumliens.livetrafik.config.MonitoringProperties;
+import se.kumliens.livetrafik.monitoring.WebSocketConnectionTracker;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class ProxyHeartbeatService {
 
     private final MonitoringProperties monitoringProperties;
     private final SupabaseRealtimeService supabaseRealtimeService;
-    private final SimpUserRegistry simpUserRegistry;
+    private final WebSocketConnectionTracker connectionTracker;
     private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
 
     @Value("${supabase.anon-key}")
     private String supabaseAnonKey;
-
-    private final HttpClient httpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(5))
-        .build();
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "proxy-heartbeat");
@@ -48,6 +44,35 @@ public class ProxyHeartbeatService {
 
     private ScheduledFuture<?> heartbeatTask;
     private final long startTimeMillis = System.currentTimeMillis();
+
+    public ProxyHeartbeatService(
+        MonitoringProperties monitoringProperties,
+        SupabaseRealtimeService supabaseRealtimeService,
+        WebSocketConnectionTracker connectionTracker,
+        ObjectMapper objectMapper
+    ) {
+        this(
+            monitoringProperties,
+            supabaseRealtimeService,
+            connectionTracker,
+            objectMapper,
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
+        );
+    }
+
+    ProxyHeartbeatService(
+        MonitoringProperties monitoringProperties,
+        SupabaseRealtimeService supabaseRealtimeService,
+        WebSocketConnectionTracker connectionTracker,
+        ObjectMapper objectMapper,
+        HttpClient httpClient
+    ) {
+        this.monitoringProperties = monitoringProperties;
+        this.supabaseRealtimeService = supabaseRealtimeService;
+        this.connectionTracker = connectionTracker;
+        this.objectMapper = objectMapper;
+        this.httpClient = httpClient;
+    }
 
     @PostConstruct
     void start() {
@@ -64,20 +89,10 @@ public class ProxyHeartbeatService {
         scheduler.shutdown();
     }
 
-    private void sendHeartbeat() {
+    void sendHeartbeat() {
         try {
             long uptimeSeconds = (System.currentTimeMillis() - startTimeMillis) / 1000;
-            int connectedClients = simpUserRegistry.getUsers().stream()
-                .mapToInt(user -> user.getSessions().size())
-                .sum();
-
-            var payload = objectMapper.createObjectNode();
-            payload.put("server_id", monitoringProperties.getServerId());
-            payload.put("uptime_seconds", uptimeSeconds);
-            payload.put("connected_clients", connectedClients);
-            payload.put("version", monitoringProperties.getVersion());
-            payload.put("supabase_connected", supabaseRealtimeService.isSupabaseConnected());
-            payload.put("messages_relayed", supabaseRealtimeService.getRelayedMessages());
+            ObjectNode payload = buildHeartbeatPayload(uptimeSeconds);
 
             String body = objectMapper.writeValueAsString(payload);
 
@@ -105,5 +120,16 @@ public class ProxyHeartbeatService {
         } catch (Exception ex) {
             log.error("Failed to send heartbeat", ex);
         }
+    }
+
+    ObjectNode buildHeartbeatPayload(long uptimeSeconds) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("server_id", monitoringProperties.getServerId());
+        payload.put("uptime_seconds", uptimeSeconds);
+        payload.put("connected_clients", connectionTracker.getConnectedClients());
+        payload.put("version", monitoringProperties.getVersion());
+        payload.put("supabase_connected", supabaseRealtimeService.isSupabaseConnected());
+        payload.put("messages_relayed", supabaseRealtimeService.getRelayedMessages());
+        return payload;
     }
 }
