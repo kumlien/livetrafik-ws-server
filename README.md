@@ -45,6 +45,7 @@ Lokal WebSocket-relay för realtidsdata från Supabase till webbklienter via STO
 - Exponerar STOMP/SockJS WebSocket på `/ws`
 - REST API: `/api/health`, `/api/latest/{region}`
 - Automatisk återanslutning + strukturerade loggar per region/typ
+- Periodisk heartbeat till Supabase Edge Function med server-metrik
 - In-memory cache för senaste fordonsdata med stale-cleanup fallback
 
 ## Krav
@@ -77,6 +78,13 @@ logging:
   level:
     se.trafiklive: DEBUG
     org.springframework.web.socket: INFO
+
+monitoring:
+  server-id: ${SERVER_ID:pi-proxy-1}
+  version: ${APP_VERSION:0.0.1-SNAPSHOT}
+  heartbeat:
+    url: ${HEARTBEAT_URL:https://wuwzjgqegoipxkoxjfhy.supabase.co/functions/v1/proxy-heartbeat}
+    interval-seconds: ${HEARTBEAT_INTERVAL_SECONDS:30}
 ~~~~
 
 > **Bakom kulisserna:** `spring.threads.virtual.enabled=true` gör att Spring Boot använder Virtual Threads för inkommande HTTP/WebSocket-förfrågningar, vilket minskar trådtrycket på Pi:n.
@@ -89,7 +97,42 @@ export SUPABASE_REGIONS="ul,sl"
 export SUPABASE_VEHICLE_TYPES="bus,train"
 # valfritt: overridea kanaler helt
 # export SUPABASE_CHANNEL="vehicle-updates-vt-bus,vehicle-updates-vt-train"
+# Heartbeat/monitoring overrides
+# export SERVER_ID="pi-proxy-1"
+# export APP_VERSION="1.3.7"
+# export HEARTBEAT_URL="https://.../proxy-heartbeat"
+# export HEARTBEAT_INTERVAL_SECONDS=30
 ~~~~
+
+På Raspberry Pi (oavsett om du kör JAR eller native-binär) måste `SUPABASE_ANON_KEY` finnas i processens miljö. Vanliga sätt:
+
+| Scenario | Kommando/exempel |
+| --- | --- |
+| Manuell session | `export SUPABASE_ANON_KEY="<key>" && ./trafik-websocket-server-linux-arm64` |
+| Wrapper-skript med `.env` | Lägg `export SUPABASE_ANON_KEY="<key>"` i `/opt/livetrafik/.env`, kör `. /opt/livetrafik/.env` innan du startar binären |
+| systemd-service | Lägg till `Environment=SUPABASE_ANON_KEY=<key>` (eller `EnvironmentFile=/etc/livetrafik.env`) under `[Service]` och kör `sudo systemctl daemon-reload && sudo systemctl restart trafik-ws` |
+
+Bekräfta att variabeln är satt med `printenv SUPABASE_ANON_KEY` (shell) eller `systemctl show -p Environment trafik-ws` (systemd).
+
+### Heartbeat-metrik
+
+- **Tjänst:** `ProxyHeartbeatService`
+- **Frekvens:** default 30 sekunder (kan höjas med `HEARTBEAT_INTERVAL_SECONDS`, minsta värde 15)
+- **Endpoint:** `monitoring.heartbeat.url` (default Supabase Edge Function)
+- **Payload:**
+
+~~~~json
+{
+  "server_id": "pi-proxy-1",
+  "uptime_seconds": 1234,
+  "connected_clients": 8,
+  "version": "0.0.1-SNAPSHOT",
+  "supabase_connected": true,
+  "messages_relayed": 421337
+}
+~~~~
+
+Fältet `supabase_connected` speglar senaste kända status mot Supabase Realtime och `messages_relayed` plockas från STOMP-forwardingen. Om Supabase-nyckeln (`SUPABASE_ANON_KEY`) är satt används den som Bearer-token + `apikey`-header mot Edge Functionen.
 
 ## Vehicle delta handling (remove-first)
 

@@ -8,6 +8,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -57,6 +58,8 @@ public class SupabaseRealtimeService {
     private WebSocketClient wsClient;
     private ScheduledExecutorService heartbeatExecutor;
     private final AtomicInteger messageRef = new AtomicInteger(1);
+    private final AtomicLong relayedMessages = new AtomicLong();
+    private volatile boolean supabaseConnected;
     private List<String> channelNames = List.of();
     private List<String> activeRegions = List.of("ul", "sl");
     private List<String> vehicleTypes = List.of("bus", "train");
@@ -77,6 +80,7 @@ public class SupabaseRealtimeService {
                 @Override
                 public void onOpen(ServerHandshake handshake) {
                     log.info("Connected to Supabase Realtime");
+                    supabaseConnected = true;
                     joinChannels();
                     startHeartbeat();
                 }
@@ -89,12 +93,14 @@ public class SupabaseRealtimeService {
                 @Override
                 public void onClose(int code, String reason, boolean remote) {
                     log.warn("WebSocket closed: {} - {}. Reconnecting...", code, reason);
+                    supabaseConnected = false;
                     scheduleReconnect();
                 }
 
                 @Override
                 public void onError(Exception ex) {
                     log.error("WebSocket error", ex);
+                    supabaseConnected = false;
                 }
             };
             
@@ -164,7 +170,7 @@ public class SupabaseRealtimeService {
                 }
             } else if ("phx_reply".equals(event)) {
                 String status = root.path("payload").path("status").asText();
-                log.info("Channel join status: {} ({})", status, topic);
+                log.deb("Channel join status: {} ({})", status, topic);
             }
             
         } catch (Exception e) {
@@ -187,6 +193,7 @@ public class SupabaseRealtimeService {
         String stompTopic = "/topic/" + channel;
         messagingTemplate.convertAndSend(stompTopic, vehiclePayload);
         log.debug("Forwarded payload to {}", stompTopic);
+        relayedMessages.incrementAndGet();
 
         ChannelDescriptor descriptor = ChannelDescriptor.from(channel);
         if (descriptor.type() == null) {
@@ -198,7 +205,7 @@ public class SupabaseRealtimeService {
         dto.backfillRegionAndType(descriptor.region(), descriptor.type());
 
         CacheMetrics metrics = vehicleCacheService.applyDelta(dto);
-        log.info("[STOMP] vehicles update: region={} type={} received={} removed={} cacheSize={}",
+        log.debug("[STOMP] vehicles update: region={} type={} received={} removed={} cacheSize={}",
             dto.getRegion(),
             dto.getVehicleType(),
             dto.getVehicles().size(),
@@ -276,5 +283,13 @@ public class SupabaseRealtimeService {
         if (wsClient != null) {
             wsClient.close();
         }
+    }
+
+    public long getRelayedMessages() {
+        return relayedMessages.get();
+    }
+
+    public boolean isSupabaseConnected() {
+        return supabaseConnected && wsClient != null && wsClient.isOpen();
     }
 }
