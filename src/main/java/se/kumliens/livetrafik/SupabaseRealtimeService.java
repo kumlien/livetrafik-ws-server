@@ -170,7 +170,7 @@ public class SupabaseRealtimeService {
                 }
             } else if ("phx_reply".equals(event)) {
                 String status = root.path("payload").path("status").asText();
-                log.deb("Channel join status: {} ({})", status, topic);
+                log.debug("Channel join status: {} ({})", status, topic);
             }
             
         } catch (Exception e) {
