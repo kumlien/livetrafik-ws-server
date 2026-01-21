@@ -21,7 +21,6 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import se.kumliens.livetrafik.SupabaseRealtimeService;
 import se.kumliens.livetrafik.config.MonitoringProperties;
-import se.kumliens.livetrafik.monitoring.WebSocketConnectionTracker;
 
 @Service
 @Slf4j
@@ -46,21 +45,6 @@ public class ProxyHeartbeatService {
     private final long startTimeMillis = System.currentTimeMillis();
 
     public ProxyHeartbeatService(
-        MonitoringProperties monitoringProperties,
-        SupabaseRealtimeService supabaseRealtimeService,
-        WebSocketConnectionTracker connectionTracker,
-        ObjectMapper objectMapper
-    ) {
-        this(
-            monitoringProperties,
-            supabaseRealtimeService,
-            connectionTracker,
-            objectMapper,
-            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
-        );
-    }
-
-    ProxyHeartbeatService(
         MonitoringProperties monitoringProperties,
         SupabaseRealtimeService supabaseRealtimeService,
         WebSocketConnectionTracker connectionTracker,

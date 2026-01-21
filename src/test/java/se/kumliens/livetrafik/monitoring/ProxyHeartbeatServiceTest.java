@@ -8,6 +8,7 @@ import java.net.http.HttpClient;
 
 import org.junit.jupiter.api.Test;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import se.kumliens.livetrafik.SupabaseRealtimeService;
@@ -29,12 +30,14 @@ class ProxyHeartbeatServiceTest {
         WebSocketConnectionTracker tracker = mock(WebSocketConnectionTracker.class);
         when(tracker.getConnectedClients()).thenReturn(7);
 
+        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build();
+
         ProxyHeartbeatService service = new ProxyHeartbeatService(
             properties,
             supabaseRealtimeService,
             tracker,
-            new com.fasterxml.jackson.databind.ObjectMapper(),
-            HttpClient.newHttpClient()
+            new ObjectMapper(),
+            httpClient
         );
 
         ObjectNode payload = service.buildHeartbeatPayload(12_345);
