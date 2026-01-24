@@ -40,7 +40,6 @@ jobs:
           echo "Öppna URL:en ovan i din webbläsare, logga in via Cloudflare Access."
           echo "När sidan bekräftar att du är inloggad fortsätter workflowet."
 
-
       - name: Configure SSH client
         run: |
           mkdir -p ~/.ssh
@@ -54,13 +53,9 @@ jobs:
             IdentityFile ~/.ssh/id_ed25519_pi
             IdentitiesOnly yes
             ProxyCommand cloudflared access ssh --hostname %h
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
           EOF
-
-      - name: Add Raspberry Pi host key
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H trafik-ssh.svante-for-the.win >> ~/.ssh/known_hosts
-
 
       - name: Copy binary to /opt/livetrafik on Raspberry Pi
         run: |
@@ -71,6 +66,7 @@ jobs:
           sudo chown root:root /opt/livetrafik/trafik-websocket-server-linux-arm64
           sudo chmod 755 /opt/livetrafik/trafik-websocket-server-linux-arm64
           EOSSH
+
       
       - name: Restart livetrafik-ws.service on Raspberry Pi
         if: ${{ inputs.restart_service }}
