@@ -56,6 +56,12 @@ jobs:
             ProxyCommand cloudflared access ssh --hostname %h
           EOF
 
+      - name: Add Raspberry Pi host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H trafik-ssh.svante-for-the.win >> ~/.ssh/known_hosts
+
+
       - name: Copy binary to /opt/livetrafik on Raspberry Pi
         run: |
           scp trafik-websocket-server-linux-arm64 trafik-pi:/home/admin/trafik-websocket-server-linux-arm64
