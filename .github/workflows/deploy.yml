@@ -34,15 +34,6 @@ jobs:
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared-linux-amd64.deb
 
-      - name: Cloudflare Access login (service token)
-        env:
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-        run: |
-          cloudflared access login https://trafik-ssh.svante-for-the.win \
-            --client-id $CF_ACCESS_CLIENT_ID \
-            --client-secret $CF_ACCESS_CLIENT_SECRET
-
       - name: Configure SSH client
         run: |
           mkdir -p ~/.ssh
