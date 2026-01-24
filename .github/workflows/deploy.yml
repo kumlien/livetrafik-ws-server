@@ -1,60 +1,81 @@
-name: Deploy to Raspberry Pi
+name: Deploy native binary to Raspberry Pi
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Tag or version to deploy (e.g., v1.0.0)'
+      restart_service:
+        description: 'Restart systemd service after deploy'
+        type: boolean
         required: false
-        type: string
+        default: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Temurin Java 17
-        uses: actions/setup-java@v4
+      - name: Download latest native binary artifact
+        uses: dawidd6/action-download-artifact@v6
         with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
+          # FILNAMNET på ditt native-build-workflow
+          # (byt om det inte heter native-arm64.yml)
+          workflow: native-arm64.yml
+          workflow_conclusion: success
+          name: trafik-websocket-server-arm64
 
-      - name: Build deployment JAR
-        run: mvn --batch-mode clean package -DskipTests
+      - name: Verify downloaded binary
+        run: |
+          ls -lh
+          file trafik-websocket-server-linux-arm64
 
-      - name: Prepare SSH key
+      - name: Install cloudflared
+        run: |
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+
+      - name: Cloudflare Access login (service token)
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          cloudflared access login https://trafik-ssh.svante-for-the.win \
+            --client-id $CF_ACCESS_CLIENT_ID \
+            --client-secret $CF_ACCESS_CLIENT_SECRET
+
+      - name: Configure SSH client
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.PI_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.PI_HOST }} >> ~/.ssh/known_hosts
+          echo "${{ secrets.PI_SSH_KEY }}" > ~/.ssh/id_ed25519_ci
+          chmod 600 ~/.ssh/id_ed25519_ci
 
-      - name: Stop service on Raspberry Pi
-        run: |
-          ssh -o StrictHostKeyChecking=yes ${{ secrets.PI_USER }}@${{ secrets.PI_HOST }} \
-            "sudo systemctl stop trafik-ws || true"
+          cat <<'EOF' >> ~/.ssh/config
+          Host trafik-pi
+            HostName trafik-ssh.svante-for-the.win
+            User admin
+            IdentityFile ~/.ssh/id_ed25519_ci
+            IdentitiesOnly yes
+            ProxyCommand cloudflared access ssh --hostname %h
+          EOF
 
-      - name: Copy JAR to Raspberry Pi
+      - name: Copy binary to /opt/livetrafik on Raspberry Pi
         run: |
-          scp target/*.jar ${{ secrets.PI_USER }}@${{ secrets.PI_HOST }}:${{ secrets.PI_DEPLOY_PATH }}/trafik-ws.jar
+          scp trafik-websocket-server-linux-arm64 trafik-pi:/home/admin/trafik-websocket-server-linux-arm64
 
-      - name: Start service on Raspberry Pi
-        run: |
-          ssh ${{ secrets.PI_USER }}@${{ secrets.PI_HOST }} "sudo systemctl start trafik-ws"
+          ssh trafik-pi <<'EOSSH'
+          sudo mv /home/admin/trafik-websocket-server-linux-arm64 /opt/livetrafik/trafik-websocket-server-linux-arm64
+          sudo chown root:root /opt/livetrafik/trafik-websocket-server-linux-arm64
+          sudo chmod 755 /opt/livetrafik/trafik-websocket-server-linux-arm64
+          EOSSH
 
-      - name: Health check
+      - name: Restart livetrafik-ws.service on Raspberry Pi
+        if: ${{ inputs.restart_service }}
         run: |
-          sleep 10
-          ssh ${{ secrets.PI_USER }}@${{ secrets.PI_HOST }} "curl -sf http://localhost:9001/api/health"
+          ssh trafik-pi "sudo systemctl restart livetrafik-ws.service && sudo systemctl status livetrafik-ws.service --no-pager -n 20"
 
       - name: Job summary
         if: always()
         run: |
           echo "## Deploy summary" >> $GITHUB_STEP_SUMMARY
           echo "Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "Target: ${{ secrets.PI_HOST }}" >> $GITHUB_STEP_SUMMARY
+          echo "Target: trafik-ssh.svante-for-the.win (livetrafik-ws.service)" >> $GITHUB_STEP_SUMMARY
