@@ -18,9 +18,7 @@ jobs:
       - name: Download latest native binary artifact
         uses: dawidd6/action-download-artifact@v6
         with:
-          # FILNAMNET på ditt native-build-workflow
-          # (byt om det inte heter native-arm64.yml)
-          workflow: native-arm64.yml
+          workflow: native-arm64.yml          # ändra om build-workflowet heter något annat
           workflow_conclusion: success
           name: trafik-websocket-server-arm64
 
@@ -29,35 +27,25 @@ jobs:
           ls -lh
           file trafik-websocket-server-linux-arm64
 
-      - name: Install cloudflared
-        run: |
-          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-          sudo dpkg -i cloudflared-linux-amd64.deb
-
-      - name: Configure SSH client
-        env:
-          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      - name: Configure SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.PI_SSH_KEY }}" > ~/.ssh/id_ed25519_ci
           chmod 600 ~/.ssh/id_ed25519_ci
 
           cat <<'EOF' >> ~/.ssh/config
-          Host trafik-pi
-            HostName trafik-ssh.svante-for-the.win
+          Host trafik-ci-pi
+            HostName trafik-ci-ssh.svante-for-the.win
             User admin
             IdentityFile ~/.ssh/id_ed25519_ci
             IdentitiesOnly yes
-            ProxyCommand env TUNNEL_SERVICE_TOKEN_ID=$TUNNEL_SERVICE_TOKEN_ID TUNNEL_SERVICE_TOKEN_SECRET=$TUNNEL_SERVICE_TOKEN_SECRET cloudflared access ssh --hostname %h
           EOF
-
 
       - name: Copy binary to /opt/livetrafik on Raspberry Pi
         run: |
-          scp trafik-websocket-server-linux-arm64 trafik-pi:/home/admin/trafik-websocket-server-linux-arm64
+          scp trafik-websocket-server-linux-arm64 trafik-ci-pi:/home/admin/trafik-websocket-server-linux-arm64
 
-          ssh trafik-pi <<'EOSSH'
+          ssh trafik-ci-pi <<'EOSSH'
           sudo mv /home/admin/trafik-websocket-server-linux-arm64 /opt/livetrafik/trafik-websocket-server-linux-arm64
           sudo chown root:root /opt/livetrafik/trafik-websocket-server-linux-arm64
           sudo chmod 755 /opt/livetrafik/trafik-websocket-server-linux-arm64
@@ -66,11 +54,11 @@ jobs:
       - name: Restart livetrafik-ws.service on Raspberry Pi
         if: ${{ inputs.restart_service }}
         run: |
-          ssh trafik-pi "sudo systemctl restart livetrafik-ws.service && sudo systemctl status livetrafik-ws.service --no-pager -n 20"
+          ssh trafik-ci-pi "sudo systemctl restart livetrafik-ws.service && sudo systemctl status livetrafik-ws.service --no-pager -n 20"
 
       - name: Job summary
         if: always()
         run: |
           echo "## Deploy summary" >> $GITHUB_STEP_SUMMARY
           echo "Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "Target: trafik-ssh.svante-for-the.win (livetrafik-ws.service)" >> $GITHUB_STEP_SUMMARY
+          echo "Target: trafik-ci-ssh.svante-for-the.win (livetrafik-ws.service)" >> $GITHUB_STEP_SUMMARY
