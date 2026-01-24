@@ -11,6 +11,7 @@ on:
 
 jobs:
   deploy:
+    name: Deploy native binary to Raspberry Pi
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -64,6 +65,9 @@ jobs:
           sudo chown root:root /opt/livetrafik/trafik-websocket-server-linux-arm64
           sudo chmod 755 /opt/livetrafik/trafik-websocket-server-linux-arm64
           EOSSH
-
+      
       - name: Restart livetrafik-ws.service on Raspberry Pi
-        if: ${{ inputs.restart_servic
+        if: ${{ inputs.restart_service }}
+        run: |
+          ssh trafik-pi "sudo systemctl restart livetrafik-ws.service && sudo systemctl status livetrafik-ws.service --no-pager -n 20"
+
