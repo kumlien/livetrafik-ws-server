@@ -11,7 +11,6 @@ import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageBuilder;
-import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
 import io.micrometer.core.instrument.MeterRegistry;
@@ -29,7 +28,7 @@ public class WebSocketMonitoringConfig implements WebSocketMessageBrokerConfigur
     }
 
     @Override
-    public void configureClientOutboundChannel(ChannelRegistration registration) {
+    public void configureClientOutboundChannel(@NonNull ChannelRegistration registration) {
         registration
             .taskExecutor()
                 .corePoolSize(4)
@@ -49,16 +48,9 @@ public class WebSocketMonitoringConfig implements WebSocketMessageBrokerConfigur
 
         @Override
         public Message<?> preSend(@NonNull Message<?> message, @NonNull MessageChannel channel) {
-            SimpMessageHeaderAccessor accessor =
-                MessageHeaderAccessor.getAccessor(message, SimpMessageHeaderAccessor.class);
-            if (accessor == null) {
-                return message;
-            }
-
-            long now = System.nanoTime();
-            return MessageBuilder.fromMessage(message)
-                .setHeader(ENQUEUED_AT_HEADER, now)
-                .build();
+            SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.wrap(message);
+            accessor.setHeader(ENQUEUED_AT_HEADER, System.nanoTime());
+            return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
         }
 
         @Override
