@@ -13,6 +13,7 @@ import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 
@@ -41,13 +42,20 @@ public class WebSocketMonitoringConfig implements WebSocketMessageBrokerConfigur
     private static class OutboundLatencyInterceptor implements ChannelInterceptor {
 
         private final Timer queueTimer;
+        private final Counter interceptCounter;
 
         private OutboundLatencyInterceptor(MeterRegistry meterRegistry) {
-            this.queueTimer = meterRegistry.timer("trafik.stomp.outbound.queue");
+            this.queueTimer = Timer.builder("trafik.stomp.outbound.queue")
+                .description("Time STOMP messages spend waiting on the outbound channel queue")
+                .register(meterRegistry);
+            this.interceptCounter = Counter.builder("trafik.stomp.outbound.intercepts")
+                .description("Number of client outbound STOMP messages observed by the interceptor")
+                .register(meterRegistry);
         }
 
         @Override
         public Message<?> preSend(@NonNull Message<?> message, @NonNull MessageChannel channel) {
+            interceptCounter.increment();
             SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.wrap(message);
             accessor.setHeader(ENQUEUED_AT_HEADER, System.nanoTime());
             return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
