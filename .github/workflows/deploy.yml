@@ -1,26 +1,57 @@
+name: Deploy native binary to Raspberry Pi
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_name:
+        description: "Artifact name to deploy (defaults to latest native build)"
+        required: false
+        default: trafik-websocket-server-arm64
+      restart_service:
+        description: "Restart livetrafik-ws.service after upload"
+        type: boolean
+        default: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
-      - name: Download latest native binary artifact
-        ...
+      - name: Download native binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: dist
 
       - name: Verify downloaded binary
-        ...
+        run: |
+          ls -lh dist
+          file dist/trafik-websocket-server-linux-arm64
+          sha256sum dist/trafik-websocket-server-linux-arm64
 
       - name: Install cloudflared
         run: |
-          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-          sudo dpkg -i cloudflared-linux-amd64.deb
+          curl -sSL -o cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
 
       - name: Cloudflare Access login (manual)
         run: |
           cloudflared access login https://trafik-ssh.svante-for-the.win
           echo ""
-          echo "Öppna URL:en ovan i din webbläsare, logga in via Cloudflare Access"
-          echo "När sidan bekräftar att du är inloggad, låt jobben fortsätta."
+          echo "Öppna URL:en ovan i din webbläsare och godkänn inloggningen."
+          echo "När sidan bekräftar att du är inloggad kan jobben fortsätta."
 
       - name: Configure SSH client
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.PI_SSH_KEY }}" > ~/.ssh/id_ed25519_ci
+          printf "%s\n" "$PI_SSH_KEY" > ~/.ssh/id_ed25519_ci
           chmod 600 ~/.ssh/id_ed25519_ci
 
           cat <<'EOF' >> ~/.ssh/config
@@ -32,17 +63,19 @@
             ProxyCommand cloudflared access ssh --hostname %h
           EOF
 
-      - name: Copy binary to /opt/livetrafik on Raspberry Pi
+      - name: Copy binary to Raspberry Pi home folder
         run: |
-          scp trafik-websocket-server-linux-arm64 trafik-pi:/home/admin/trafik-websocket-server-linux-arm64
+          scp dist/trafik-websocket-server-linux-arm64 trafik-pi:/home/admin/trafik-websocket-server-linux-arm64
 
+      - name: Install binary into /opt/livetrafik
+        run: |
           ssh trafik-pi <<'EOSSH'
           sudo mv /home/admin/trafik-websocket-server-linux-arm64 /opt/livetrafik/trafik-websocket-server-linux-arm64
           sudo chown root:root /opt/livetrafik/trafik-websocket-server-linux-arm64
           sudo chmod 755 /opt/livetrafik/trafik-websocket-server-linux-arm64
           EOSSH
 
-      - name: Restart livetrafik-ws.service on Raspberry Pi
+      - name: Restart livetrafik-ws.service
         if: ${{ inputs.restart_service }}
         run: |
           ssh trafik-pi "sudo systemctl restart livetrafik-ws.service && sudo systemctl status livetrafik-ws.service --no-pager -n 20"
