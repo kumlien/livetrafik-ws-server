@@ -1,6 +1,7 @@
 package se.kumliens.livetrafik;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -19,9 +20,11 @@ import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import se.kumliens.livetrafik.VehicleCacheService.CacheMetrics;
 import se.kumliens.livetrafik.model.VehicleBroadcastPayload;
@@ -32,13 +35,16 @@ import se.kumliens.livetrafik.model.VehicleBroadcastPayload;
  * in sync for typed feeds.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class SupabaseRealtimeService {
 
     private final VehicleCacheService vehicleCacheService;
     private final ObjectMapper objectMapper;
     private final SimpMessagingTemplate messagingTemplate;
+    private final MeterRegistry meterRegistry;
+    private final Timer supabasePayloadLatency;
+    private final Timer stompDispatchTimer;
+    private final Counter stompDispatchCounter;
     
     @Value("${supabase.url}")
     private String supabaseWsUrl;
@@ -63,6 +69,20 @@ public class SupabaseRealtimeService {
     private List<String> channelNames = List.of();
     private List<String> activeRegions = List.of("ul", "sl");
     private List<String> vehicleTypes = List.of("bus", "train");
+
+    public SupabaseRealtimeService(
+            VehicleCacheService vehicleCacheService,
+            ObjectMapper objectMapper,
+            SimpMessagingTemplate messagingTemplate,
+            MeterRegistry meterRegistry) {
+        this.vehicleCacheService = vehicleCacheService;
+        this.objectMapper = objectMapper;
+        this.messagingTemplate = messagingTemplate;
+        this.meterRegistry = meterRegistry;
+        this.supabasePayloadLatency = meterRegistry.timer("trafik.supabase.payload.latency");
+        this.stompDispatchTimer = meterRegistry.timer("trafik.stomp.dispatch.latency");
+        this.stompDispatchCounter = meterRegistry.counter("trafik.stomp.messages.sent");
+    }
 
     /**
      * Establishes the WebSocket connection to Supabase Realtime and subscribes to
@@ -191,7 +211,11 @@ public class SupabaseRealtimeService {
 
         // Broadcast upstream payload to clients regardless of vehicles/removed entries
         String stompTopic = "/topic/" + channel;
+        recordSupabaseLatency(vehiclePayload);
+        long dispatchStart = System.nanoTime();
         messagingTemplate.convertAndSend(stompTopic, vehiclePayload);
+        stompDispatchTimer.record(Duration.ofNanos(System.nanoTime() - dispatchStart));
+        stompDispatchCounter.increment();
         log.debug("Forwarded payload to {}", stompTopic);
         relayedMessages.incrementAndGet();
 
@@ -211,6 +235,17 @@ public class SupabaseRealtimeService {
             dto.getVehicles().size(),
             dto.getRemovedVehicleIds().size(),
             metrics.cacheSize());
+    }
+
+    private void recordSupabaseLatency(JsonNode vehiclePayload) {
+        long timestamp = vehiclePayload.path("timestamp").asLong(0L);
+        if (timestamp <= 0L) {
+            return;
+        }
+        long diff = System.currentTimeMillis() - timestamp;
+        if (diff >= 0) {
+            supabasePayloadLatency.record(Duration.ofMillis(diff));
+        }
     }
     
     private void scheduleReconnect() {
