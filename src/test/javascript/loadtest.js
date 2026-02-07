@@ -9,6 +9,13 @@ import WebSocket from 'ws';
 if (!globalThis.window) {
   globalThis.window = globalThis;
 }
+
+function pickRegion(clientNumber) {
+  if (regions.length === 0) {
+    throw new Error('At least one region must be provided');
+  }
+  return regions[(clientNumber - 1) % regions.length];
+}
 if (!globalThis.document) {
   globalThis.document = { createElement: () => ({}), cookie: '' };
 }
@@ -72,6 +79,8 @@ async function main() {
 function runClient(clientNumber) {
   return new Promise((resolve) => {
     const clientId = `sockjs-client-${clientNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const region = pickRegion(clientNumber);
+    const subscribedVehicleTypes = [...vehicleTypes];
     const stompClient = new StompClient({
       reconnectDelay: 0,
       heartbeatIncoming: 10000,
@@ -101,7 +110,7 @@ function runClient(clientNumber) {
 
     stompClient.onConnect = () => {
       metrics.connectedClients += 1;
-      subscribeToTopics(stompClient, clientId, (payload) => {
+      subscribeToTopics(stompClient, clientId, region, subscribedVehicleTypes, (payload) => {
         metrics.messagesReceived += 1;
         messageCount += 1;
         recordLatency(payload);
@@ -140,19 +149,17 @@ function runClient(clientNumber) {
   });
 }
 
-function subscribeToTopics(stompClient, clientId, onMessage) {
-  regions.forEach((region) => {
-    vehicleTypes.forEach((vehicleType) => {
-      const destination = `/topic/${region}/vehicles/${vehicleType}`;
-      stompClient.subscribe(destination, (message) => {
-        try {
-          const payload = JSON.parse(message.body);
-          onMessage(payload);
-        } catch (err) {
-          metrics.errors += 1;
-          console.error(chalk.red(`[${clientId}] Failed to parse payload from ${destination}: ${err.message}`));
-        }
-      });
+function subscribeToTopics(stompClient, clientId, region, types, onMessage) {
+  types.forEach((vehicleType) => {
+    const destination = `/topic/${region}/vehicles/${vehicleType}`;
+    stompClient.subscribe(destination, (message) => {
+      try {
+        const payload = JSON.parse(message.body);
+        onMessage(payload);
+      } catch (err) {
+        metrics.errors += 1;
+        console.error(chalk.red(`[${clientId}] Failed to parse payload from ${destination}: ${err.message}`));
+      }
     });
   });
 }

@@ -32,9 +32,9 @@ public class WebSocketMonitoringConfig implements WebSocketMessageBrokerConfigur
     public void configureClientOutboundChannel(@NonNull ChannelRegistration registration) {
         registration
             .taskExecutor()
-                .corePoolSize(4)
-                .maxPoolSize(16)
-                .queueCapacity(2_000);
+                .corePoolSize(16)
+                .maxPoolSize(64)
+                .queueCapacity(10_000);
 
         registration.interceptors(new OutboundLatencyInterceptor(meterRegistry));
     }
@@ -47,6 +47,10 @@ public class WebSocketMonitoringConfig implements WebSocketMessageBrokerConfigur
         private OutboundLatencyInterceptor(MeterRegistry meterRegistry) {
             this.queueTimer = Timer.builder("trafik.stomp.outbound.queue")
                 .description("Time STOMP messages spend waiting on the outbound channel queue")
+                .publishPercentileHistogram(true)
+                .publishPercentiles(0.5, 0.9, 0.95, 0.99)
+                .minimumExpectedValue(Duration.ofNanos(50_000))
+                .maximumExpectedValue(Duration.ofMillis(10))
                 .register(meterRegistry);
             this.interceptCounter = Counter.builder("trafik.stomp.outbound.intercepts")
                 .description("Number of client outbound STOMP messages observed by the interceptor")

@@ -79,8 +79,20 @@ public class SupabaseRealtimeService {
         this.objectMapper = objectMapper;
         this.messagingTemplate = messagingTemplate;
         this.meterRegistry = meterRegistry;
-        this.supabasePayloadLatency = meterRegistry.timer("trafik.supabase.payload.latency");
-        this.stompDispatchTimer = meterRegistry.timer("trafik.stomp.dispatch.latency");
+        this.supabasePayloadLatency = Timer.builder("trafik.supabase.payload.latency")
+            .description("Latency from Supabase timestamp until the payload is relayed")
+            .publishPercentileHistogram(true)
+            .publishPercentiles(0.5, 0.9, 0.95, 0.99)
+            .minimumExpectedValue(Duration.ofMillis(1))
+            .maximumExpectedValue(Duration.ofSeconds(5))
+            .register(meterRegistry);
+        this.stompDispatchTimer = Timer.builder("trafik.stomp.dispatch.latency")
+            .description("Time spent broadcasting a Supabase payload to STOMP")
+            .publishPercentileHistogram(true)
+            .publishPercentiles(0.5, 0.9, 0.95, 0.99)
+            .minimumExpectedValue(Duration.ofNanos(100_000))
+            .maximumExpectedValue(Duration.ofMillis(500))
+            .register(meterRegistry);
         this.stompDispatchCounter = meterRegistry.counter("trafik.stomp.messages.sent");
     }
 
