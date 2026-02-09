@@ -45,6 +45,7 @@ public class SupabaseRealtimeService {
     private final Timer supabasePayloadLatency;
     private final Timer stompDispatchTimer;
     private final Counter stompDispatchCounter;
+    private final Counter supabasePayloadCounter;
     
     @Value("${supabase.url}")
     private String supabaseWsUrl;
@@ -94,6 +95,7 @@ public class SupabaseRealtimeService {
             .maximumExpectedValue(Duration.ofMillis(500))
             .register(meterRegistry);
         this.stompDispatchCounter = meterRegistry.counter("trafik.stomp.messages.sent");
+        this.supabasePayloadCounter = meterRegistry.counter("trafik.supabase.payloads.received");
     }
 
     /**
@@ -198,6 +200,7 @@ public class SupabaseRealtimeService {
 
                 if ("vehicles".equals(broadcastEvent)) {
                     JsonNode vehiclePayload = payload.path("payload");
+                    supabasePayloadCounter.increment(); // Count all incoming payloads
                     recordSupabaseLatency(vehiclePayload); // Measure as early as possible
                     handleVehiclePayload(topic, vehiclePayload);
                 }
