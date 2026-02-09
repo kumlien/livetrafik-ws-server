@@ -10,6 +10,10 @@ if (!globalThis.window) {
   globalThis.window = globalThis;
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function pickRegion(clientNumber) {
   if (regions.length === 0) {
     throw new Error('At least one region must be provided');
@@ -31,6 +35,7 @@ program
   .option('-u, --url <url>', 'SockJS endpoint URL', 'https://localhost:9001/ws')
   .option('-c, --clients <number>', 'number of concurrent clients', parseIntValue, 10)
   .option('-d, --duration <duration>', 'test duration (e.g. 30s, 2m, 1h)', '1m')
+  .option('--ramp-duration <duration>', 'spread client start-up across duration (e.g. 30s, 2m)', '0s')
   .option('-r, --regions <list>', 'comma separated regions', 'ul,sl')
   .option('-t, --vehicle-types <list>', 'comma separated vehicle types', 'bus,train')
   .option('-m, --max-messages <number>', 'max messages per client before disconnect (0 = unlimited)', parseIntValue, 0)
@@ -40,8 +45,10 @@ program
 
 const options = program.opts();
 const testDurationMs = parseDuration(options.duration);
+const rampDurationMs = parseDuration(options.rampDuration || '0s');
 const regions = csvToList(options.regions);
 const vehicleTypes = csvToList(options.vehicleTypes);
+const rampDelayMs = rampDurationMs > 0 ? rampDurationMs / Math.max(1, options.clients - 1 || 1) : 0;
 
 const metrics = {
   startTime: Date.now(),
@@ -51,6 +58,9 @@ const metrics = {
   failedClients: 0,
   messagesReceived: 0,
   errors: 0,
+  activeClients: 0,
+  peakActiveClients: 0,
+  earlyDisconnects: 0,
   latency: {
     count: 0,
     sum: 0,
@@ -65,15 +75,24 @@ const latencySampleLimit = options.latencySamples;
 async function main() {
   console.log(chalk.cyan(`\nStarting SockJS load test against ${options.url}`));
   console.log(chalk.cyan(`Clients: ${options.clients}, Duration: ${options.duration}, Regions: ${regions.join(', ')}, Types: ${vehicleTypes.join(', ')}`));
+  if (rampDurationMs > 0) {
+    console.log(chalk.cyan(`Ramp duration: ${options.rampDuration} (~${Math.round(rampDelayMs)} ms between client starts)`));
+  }
 
+  await startClientsWithRamp();
+  printSummary();
+}
+
+async function startClientsWithRamp() {
   const clientPromises = [];
   for (let i = 0; i < options.clients; i++) {
+    if (rampDelayMs > 0 && i > 0) {
+      await delay(rampDelayMs);
+    }
     clientPromises.push(runClient(i + 1));
   }
 
-  // Wait for all clients to finish
   await Promise.allSettled(clientPromises);
-  printSummary();
 }
 
 function runClient(clientNumber) {
@@ -98,18 +117,33 @@ function runClient(clientNumber) {
 
     let messageCount = 0;
     let resolved = false;
+    let connectedAt = null;
+    let countedActive = false;
 
-    const finish = () => {
+    const finish = (reason = 'completed') => {
       if (resolved) {
         return;
       }
       resolved = true;
+      clearTimeout(timeoutHandle);
       stompClient.deactivate();
+      if (countedActive) {
+        metrics.activeClients = Math.max(0, metrics.activeClients - 1);
+        if (connectedAt && shouldCountEarlyDisconnect(reason)) {
+          metrics.earlyDisconnects += 1;
+        }
+      } else {
+        metrics.failedClients += 1;
+      }
       resolve({ messageCount });
     };
 
     stompClient.onConnect = () => {
       metrics.connectedClients += 1;
+      connectedAt = Date.now();
+      countedActive = true;
+      metrics.activeClients += 1;
+      metrics.peakActiveClients = Math.max(metrics.peakActiveClients, metrics.activeClients);
       subscribeToTopics(stompClient, clientId, region, subscribedVehicleTypes, (payload) => {
         metrics.messagesReceived += 1;
         messageCount += 1;
@@ -143,8 +177,8 @@ function runClient(clientNumber) {
     stompClient.activate();
 
     // Force stop after duration
-    setTimeout(() => {
-      finish();
+    const timeoutHandle = setTimeout(() => {
+      finish('duration-elapsed');
     }, testDurationMs);
   });
 }
@@ -172,8 +206,13 @@ function printSummary() {
   console.log(`Target URL:      ${metrics.targetUrl}`);
   console.log(`Clients:         ${metrics.clients}`);
   console.log(`Connected:       ${metrics.connectedClients}`);
+  console.log(`Peak active:     ${metrics.peakActiveClients}`);
   console.log(`Messages recv:   ${metrics.messagesReceived}`);
   console.log(`Errors:          ${metrics.errors}`);
+  console.log(`Failed to connect: ${metrics.failedClients}`);
+  if (options.maxMessages === 0) {
+    console.log(`Early disconnects (< ${options.duration}): ${metrics.earlyDisconnects}`);
+  }
   if (metrics.latency.count > 0) {
     const avg = metrics.latency.sum / metrics.latency.count;
     const percentiles = calculateLatencyPercentiles();
@@ -186,6 +225,17 @@ function printSummary() {
     console.log('Latency:         n/a (no timestamp field in payloads)');
   }
   console.log(`Duration (wall): ${durationSec}s`);
+}
+
+function shouldCountEarlyDisconnect(reason) {
+  if (options.maxMessages > 0 || !reason) {
+    return false;
+  }
+  // Ignore planned end when the client timed out naturally
+  if (reason === 'duration-elapsed') {
+    return false;
+  }
+  return true;
 }
 
 function recordLatency(payload) {

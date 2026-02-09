@@ -191,20 +191,21 @@ public class SupabaseRealtimeService {
             JsonNode root = objectMapper.readTree(message);
             String event = root.path("event").asText();
             String topic = root.path("topic").asText();
-            
+
             if ("broadcast".equals(event)) {
                 JsonNode payload = root.path("payload");
                 String broadcastEvent = payload.path("event").asText();
-                
+
                 if ("vehicles".equals(broadcastEvent)) {
                     JsonNode vehiclePayload = payload.path("payload");
+                    recordSupabaseLatency(vehiclePayload); // Measure as early as possible
                     handleVehiclePayload(topic, vehiclePayload);
                 }
             } else if ("phx_reply".equals(event)) {
                 String status = root.path("payload").path("status").asText();
                 log.debug("Channel join status: {} ({})", status, topic);
             }
-            
+
         } catch (Exception e) {
             log.error("Error parsing message: {}", message, e);
         }
@@ -223,7 +224,6 @@ public class SupabaseRealtimeService {
 
         // Broadcast upstream payload to clients regardless of vehicles/removed entries
         String stompTopic = "/topic/" + channel;
-        recordSupabaseLatency(vehiclePayload);
         long dispatchStart = System.nanoTime();
         messagingTemplate.convertAndSend(stompTopic, vehiclePayload);
         stompDispatchTimer.record(Duration.ofNanos(System.nanoTime() - dispatchStart));
