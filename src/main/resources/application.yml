@@ -30,3 +30,4 @@ monitoring:
   heartbeat:
     url: ${HEARTBEAT_URL:https://wuwzjgqegoipxkoxjfhy.supabase.co/functions/v1/proxy-heartbeat}
     interval-seconds: ${HEARTBEAT_INTERVAL_SECONDS:30}
+    secret: ${HEARTBEAT_SECRET:}

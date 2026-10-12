@@ -19,5 +19,7 @@ public class MonitoringProperties {
     public static class Heartbeat {
         private String url = "https://wuwzjgqegoipxkoxjfhy.supabase.co/functions/v1/proxy-heartbeat";
         private long intervalSeconds = 30;
+        /** Delad hemlighet som skickas i x-proxy-secret; proxy-heartbeat avvisar anrop utan den. */
+        private String secret = "";
     }
 }

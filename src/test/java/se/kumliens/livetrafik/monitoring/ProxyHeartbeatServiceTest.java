@@ -5,8 +5,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -15,6 +17,35 @@ import se.kumliens.livetrafik.SupabaseRealtimeService;
 import se.kumliens.livetrafik.config.MonitoringProperties;
 
 class ProxyHeartbeatServiceTest {
+
+    private static ProxyHeartbeatService serviceWith(MonitoringProperties properties) {
+        ProxyHeartbeatService service = new ProxyHeartbeatService(
+            properties,
+            mock(SupabaseRealtimeService.class),
+            mock(WebSocketConnectionTracker.class),
+            new ObjectMapper(),
+            HttpClient.newHttpClient()
+        );
+        ReflectionTestUtils.setField(service, "supabaseAnonKey", "anon-key");
+        return service;
+    }
+
+    @Test
+    void heartbeatCarriesSharedSecretSoSupabaseCanRejectSpoofedHeartbeats() {
+        MonitoringProperties properties = new MonitoringProperties();
+        properties.getHeartbeat().setSecret("s3cret");
+
+        HttpRequest request = serviceWith(properties).buildHeartbeatRequest("{}");
+
+        assertThat(request.headers().firstValue("x-proxy-secret")).contains("s3cret");
+    }
+
+    @Test
+    void heartbeatOmitsSecretHeaderWhenNotConfigured() {
+        HttpRequest request = serviceWith(new MonitoringProperties()).buildHeartbeatRequest("{}");
+
+        assertThat(request.headers().firstValue("x-proxy-secret")).isEmpty();
+    }
 
     @Test
     void heartbeatPayloadReflectsConnectedClients() {

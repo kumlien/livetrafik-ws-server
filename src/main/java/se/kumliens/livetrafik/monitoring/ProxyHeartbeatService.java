@@ -80,14 +80,7 @@ public class ProxyHeartbeatService {
 
             String body = objectMapper.writeValueAsString(payload);
 
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(monitoringProperties.getHeartbeat().getUrl()))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + supabaseAnonKey)
-                .header("apikey", supabaseAnonKey)
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .timeout(Duration.ofSeconds(10))
-                .build();
+            HttpRequest request = buildHeartbeatRequest(body);
 
             httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenAccept(response -> {
@@ -104,6 +97,21 @@ public class ProxyHeartbeatService {
         } catch (Exception ex) {
             log.error("Failed to send heartbeat", ex);
         }
+    }
+
+    HttpRequest buildHeartbeatRequest(String body) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+            .uri(URI.create(monitoringProperties.getHeartbeat().getUrl()))
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer " + supabaseAnonKey)
+            .header("apikey", supabaseAnonKey)
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .timeout(Duration.ofSeconds(10));
+        String secret = monitoringProperties.getHeartbeat().getSecret();
+        if (secret != null && !secret.isBlank()) {
+            builder.header("x-proxy-secret", secret);
+        }
+        return builder.build();
     }
 
     ObjectNode buildHeartbeatPayload(long uptimeSeconds) {
