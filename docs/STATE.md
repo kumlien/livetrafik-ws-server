@@ -19,7 +19,7 @@ Status: On Track
 
 ## Blockers
 
-- Actuator fix `2e2049d` is not deployed. Run `native-arm64.yml` then `native-deploy.yml`, and verify that `https://trafik-ws.svante-for-the.win/actuator` lists only `health` and `info`.
+- Actuator fix `2e2049d` and the STOMP SEND block are not deployed. Run `native-arm64.yml` then `native-deploy.yml`, and verify that `https://trafik-ws.svante-for-the.win/actuator` lists only `health` and `info`.
 
 ## Recent Decisions
 

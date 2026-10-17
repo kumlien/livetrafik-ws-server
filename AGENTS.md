@@ -69,6 +69,7 @@ Detail: `docs/ARCHITECTURE.md` (components, data flow, testing), `docs/STACK.md`
 - Never treat `vehicles` as a full snapshot or upsert before removing. Remove-first is what keeps finished trips from lingering as "ghost" vehicles.
 - Never rename `removed_vehicle_ids` to camelCase. The Bussig producer and browser clients use the snake_case name.
 - Never expose additional Actuator endpoints on port 9001. It is public via the Cloudflare Tunnel; use a separate `management.server.port` if more are needed.
+- Never let clients publish. `RejectClientSendInterceptor` drops client STOMP SEND, because the simple broker would relay it to every subscriber on the public port.
 - Never add a Jackson/reflection-bound type without registering it in `config/LivetrafikRuntimeHints.java`. The failure shows up only in the native binary on the Pi.
 - Never edit `../livetrafik` from this repo's sessions. Write down the Bussig changes that are needed instead.
 - Never give the user Pi commands that print secret values. Hash them (`sha256sum`) instead. Access to the Pi is browser-only through Raspberry Pi Connect, so commands are pasted by the user.
