@@ -3,6 +3,9 @@ package se.kumliens.livetrafik;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Type;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.IntStream;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -10,9 +13,11 @@ import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.messaging.converter.StringMessageConverter;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
@@ -39,6 +44,9 @@ class StompEndpointIntegrationTest {
 
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private SimpMessagingTemplate messagingTemplate;
 
     private final ThreadPoolTaskScheduler clientScheduler = new ThreadPoolTaskScheduler();
     private WebSocketStompClient stompClient;
@@ -76,6 +84,34 @@ class StompEndpointIntegrationTest {
         connect(connected);
 
         assertThat(connected.get(5, TimeUnit.SECONDS).getHeartbeat()).containsExactly(10_000, 10_000);
+    }
+
+    @Test
+    void deltasReachEachClientInPublishOrderSoRemovalsAreNotOvertaken() throws Exception {
+        int count = 2_000;
+        List<String> received = new CopyOnWriteArrayList<>();
+        CompletableFuture<Void> all = new CompletableFuture<>();
+        StompSession subscriber = connect(new CompletableFuture<>());
+        subscriber.subscribe(BUS_TOPIC, new StompFrameHandler() {
+            @Override
+            public Type getPayloadType(StompHeaders headers) {
+                return String.class;
+            }
+
+            @Override
+            public void handleFrame(StompHeaders headers, Object payload) {
+                received.add((String) payload);
+                if (received.size() == count) {
+                    all.complete(null);
+                }
+            }
+        });
+        Thread.sleep(200); // let the SUBSCRIBE register before publishing
+
+        IntStream.range(0, count).forEach(i -> messagingTemplate.convertAndSend(BUS_TOPIC, String.valueOf(i)));
+
+        all.get(10, TimeUnit.SECONDS);
+        assertThat(received).containsExactlyElementsOf(IntStream.range(0, count).mapToObj(String::valueOf).toList());
     }
 
     @Test

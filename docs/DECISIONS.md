@@ -19,4 +19,6 @@
 
 - **STOMP heartbeats 10 s/10 s**: simple broker uses `messageBrokerTaskScheduler`; matches Bussig's client request, and sessions silent for 30 s (3× interval) are closed (2026-10-17).
 
+- **Publish order per client**: `preservePublishOrder(true)`, so deltas on one session never overtake each other in the 16-thread outbound pool (2026-10-17).
+
 ## Pending

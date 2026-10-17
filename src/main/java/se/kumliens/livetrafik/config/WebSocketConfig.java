@@ -47,6 +47,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         config.enableSimpleBroker("/topic")
             .setHeartbeatValue(STOMP_HEARTBEAT_MILLIS)
             .setTaskScheduler(messageBrokerTaskScheduler);
+        // Deltas must reach each client in publish order; the 16-thread outbound pool reorders otherwise
+        config.setPreservePublishOrder(true);
         config.setApplicationDestinationPrefixes("/app");
     }
 
