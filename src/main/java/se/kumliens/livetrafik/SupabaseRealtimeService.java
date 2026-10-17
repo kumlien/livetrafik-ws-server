@@ -7,7 +7,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -63,7 +65,16 @@ public class SupabaseRealtimeService {
     private String vehicleTypesProperty;
     
     private WebSocketClient wsClient;
-    private ScheduledExecutorService heartbeatExecutor;
+    long reconnectDelayMillis = 5_000;
+    // One shared scheduler for Phoenix heartbeats and reconnects; per-attempt executors leaked a thread each
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "supabase-realtime");
+        t.setDaemon(true);
+        return t;
+    });
+    private ScheduledFuture<?> heartbeatTask;
+    private final AtomicBoolean reconnectPending = new AtomicBoolean();
+    private volatile boolean shuttingDown;
     private final AtomicInteger messageRef = new AtomicInteger(1);
     private final AtomicLong relayedMessages = new AtomicLong();
     private volatile boolean supabaseConnected;
@@ -126,7 +137,7 @@ public class SupabaseRealtimeService {
 
                 @Override
                 public void onClose(int code, String reason, boolean remote) {
-                    log.warn("WebSocket closed: {} - {}. Reconnecting...", code, reason);
+                    log.warn("WebSocket closed: {} - {}", code, reason);
                     supabaseConnected = false;
                     scheduleReconnect();
                 }
@@ -170,9 +181,11 @@ public class SupabaseRealtimeService {
         log.info("Supabase Realtime: subscribing to {} channels", channelNames.size());
     }
     
-    private void startHeartbeat() {
-        heartbeatExecutor = Executors.newSingleThreadScheduledExecutor();
-        heartbeatExecutor.scheduleAtFixedRate(() -> {
+    private synchronized void startHeartbeat() {
+        if (heartbeatTask != null) {
+            heartbeatTask.cancel(false);
+        }
+        heartbeatTask = scheduler.scheduleAtFixedRate(() -> {
             if (wsClient != null && wsClient.isOpen()) {
                 String heartbeat = String.format("""
                     {
@@ -264,10 +277,17 @@ public class SupabaseRealtimeService {
     }
     
     private void scheduleReconnect() {
-        Executors.newSingleThreadScheduledExecutor().schedule(() -> {
-            log.info("Attempting to reconnect...");
-            connect();
-        }, 5, TimeUnit.SECONDS);
+        // onError and onClose can both fire for one failure; keep a single pending attempt
+        if (shuttingDown || !reconnectPending.compareAndSet(false, true)) {
+            return;
+        }
+        scheduler.schedule(() -> {
+            reconnectPending.set(false);
+            if (!shuttingDown) {
+                log.info("Attempting to reconnect...");
+                connect();
+            }
+        }, reconnectDelayMillis, TimeUnit.MILLISECONDS);
     }
 
     private List<String> resolveChannelNames() {
@@ -327,9 +347,8 @@ public class SupabaseRealtimeService {
     
     @PreDestroy
     public void disconnect() {
-        if (heartbeatExecutor != null) {
-            heartbeatExecutor.shutdown();
-        }
+        shuttingDown = true;
+        scheduler.shutdownNow();
         if (wsClient != null) {
             wsClient.close();
         }
