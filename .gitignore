@@ -34,3 +34,7 @@ build/
 .vscode/
 .DS_Store
 
+
+### Agent workspace ###
+.agent_temp/
+docs/STATE.local.md
