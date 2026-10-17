@@ -441,6 +441,53 @@ client.activate();
 
 ## Felsökning
 
+### Tjänsten startar inte efter omstart (Raspberry Pi)
+
+Om tjänsten inte är aktiv efter en omstart, följ dessa steg:
+
+1. **Kontrollera systemd-tjänstens namn och status**
+
+   ```bash
+   # Lista alla livetrafik-relaterade tjänster
+   systemctl list-units --type=service | grep livetrafik
+
+   # Kontrollera status (ersätt med korrekt namn)
+   systemctl status livetrafik-ws.service
+   ```
+
+2. **Starta och aktivera tjänsten**
+
+   ```bash
+   sudo systemctl start livetrafik-ws.service
+   sudo systemctl enable livetrafik-ws.service
+   systemctl status livetrafik-ws.service
+   ```
+
+3. **Verifiera att tjänsten svarar**
+
+   ```bash
+   curl -s http://localhost:9001/actuator/health
+   # Förväntat svar: {"status":"UP"}
+   ```
+
+4. **Visa loggar vid problem**
+
+   ```bash
+   # Senaste loggarna
+   journalctl -u livetrafik-ws.service -n 50
+
+   # Följ loggar i realtid
+   journalctl -fu livetrafik-ws.service
+   ```
+
+5. **Vanliga orsaker**
+
+   - **Tjänsten inte enabled**: Kör `sudo systemctl enable livetrafik-ws.service`
+   - **Miljövariabler saknas**: Verifiera `SUPABASE_ANON_KEY` i service-filen eller via `EnvironmentFile`
+   - **Port konflikt**: Kontrollera att inget annat använder port 9001 (`ss -tlnp | grep 9001`)
+
+### Allmänna problem
+
 | Problem | Lösning |
 |---------|---------|
 | Servern startar inte | Kontrollera `journalctl -u trafik-ws -n 50` |
