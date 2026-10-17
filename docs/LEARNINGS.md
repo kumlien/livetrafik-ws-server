@@ -7,7 +7,7 @@
 
 ## STOMP / Supabase
 
-- **No STOMP heartbeats** – `enableSimpleBroker` has no TaskScheduler/heartbeat value, so clients' 10 s/10 s request negotiates to 0,0; Bussig relies on a 45 s client watchdog.
+- **Broker heartbeats need a scheduler** – `setHeartbeatValue` without `setTaskScheduler` fails startup; without both, CONNECTED says 0,0 (`StompEndpointIntegrationTest` guards it).
 - **Failed channel joins are silent** – `phx_reply` errors log at DEBUG; `supabase_connected=true` can coexist with zero relayed messages.
 - **Heartbeat secret is mandatory upstream** – without `HEARTBEAT_SECRET`, `proxy-heartbeat` answers 401 every 30 s (WARN only) and `/admin/proxy` shows the proxy offline while relaying works.
 

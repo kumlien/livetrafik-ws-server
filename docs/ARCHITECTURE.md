@@ -11,7 +11,7 @@ Single-process relay between Supabase Realtime and Bussig's browser clients (`..
 | `VehicleCacheService` | Per-(region, type) `ConcurrentHashMap` keyed by `vehicle_id`; remove-first → upsert → stale cleanup; combined bus+train snapshot per region | `.../VehicleCacheService.java` |
 | `VehicleBroadcastPayload` | Tolerant DTO for the delta payload (missing lists → empty; region/type backfilled from channel) | `.../model/VehicleBroadcastPayload.java` |
 | `VehicleController` | `GET /api/latest/{region}`, `GET /api/health` (CORS `*`) | `.../VehicleController.java` |
-| `WebSocketConfig` | Simple broker on `/topic`; endpoints `/ws` (SockJS) and `/ws-native`; allowed origins `*` | `.../config/WebSocketConfig.java` |
+| `WebSocketConfig` | Simple broker on `/topic` with 10 s/10 s STOMP heartbeats; client SEND rejected (subscribe-only); endpoints `/ws` (SockJS) and `/ws-native`; allowed origins `*` | `.../config/WebSocketConfig.java` |
 | `WebSocketMonitoringConfig` | Outbound channel executor 16–64 threads, queue 10 000; queue-time interceptor | `.../config/WebSocketMonitoringConfig.java` |
 | `ProxyHeartbeatService` | POST status to Supabase `proxy-heartbeat` every `max(15, interval)` s with anon key and optional `x-proxy-secret` | `.../monitoring/ProxyHeartbeatService.java` |
 | `WebSocketConnectionTracker` | Counts STOMP sessions from connect/disconnect events | `.../monitoring/WebSocketConnectionTracker.java` |
@@ -48,5 +48,7 @@ Single-process relay between Supabase Realtime and Bussig's browser clients (`..
 - `VehicleCacheServiceTest`: delta semantics (remove-only, remove+add, add-only, null-tolerance, stale TTL) using the package-private `Duration` constructor and `*ForTesting` accessors.
 - `ProxyHeartbeatServiceTest`: request headers (secret present/absent) and payload fields, with Mockito mocks.
 - `LivetrafikWsServerApplicationTests`: its nested `@Configuration` replaces the application config, so it does not load the real context.
-- No test covers `SupabaseRealtimeService` (Phoenix parsing, channel → topic mapping) or the STOMP endpoints.
+- `SupabaseRealtimeServiceTest`: reconnect loop against a closed port (no thread growth, no reconnect after `disconnect()`).
+- `StompEndpointIntegrationTest`: full context on a random port, real STOMP over `/ws-native` (heartbeat negotiation, client SEND not relayed). Supabase/heartbeat URLs point at `localhost:1`.
+- No test covers Phoenix frame parsing or channel → topic mapping.
 - Load tests (manual, against a running server): `src/test/javascript/loadtest.js` (SockJS/STOMP, Node) and `K6LoadTest.js`.
