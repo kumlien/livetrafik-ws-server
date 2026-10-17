@@ -4,6 +4,7 @@
 
 - **JDK 25 required** – `./mvnw` fails with "release version 25 not supported" on an older `JAVA_HOME`; sdkman has `25.0.3-tem` / `25.0.1-graalce` locally.
 - **Native-only failures** – Jackson/reflection types missing from `LivetrafikRuntimeHints` pass every JVM test and break only on the Pi.
+- **No `@Lazy` injection** – its runtime JDK proxy lacks reflection metadata; the native binary dies at startup (`MissingReflectionRegistrationError`). Build native locally (`25.0.1-graalce`) after config changes.
 
 ## STOMP / Supabase
 

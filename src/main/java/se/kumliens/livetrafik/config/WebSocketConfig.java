@@ -1,9 +1,8 @@
 package se.kumliens.livetrafik.config;
 
 
-import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.lang.NonNull;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -12,7 +11,7 @@ import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.messaging.support.ChannelInterceptor;
-import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
@@ -33,20 +32,28 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private static final long[] STOMP_HEARTBEAT_MILLIS = {10_000, 10_000};
 
     private final MeterRegistry meterRegistry;
-    private final TaskScheduler messageBrokerTaskScheduler;
 
-    public WebSocketConfig(
-            MeterRegistry meterRegistry,
-            @Lazy @Qualifier("messageBrokerTaskScheduler") TaskScheduler messageBrokerTaskScheduler) {
+    public WebSocketConfig(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
-        this.messageBrokerTaskScheduler = messageBrokerTaskScheduler;
+    }
+
+    /**
+     * Own scheduler instead of Spring's documented `@Lazy messageBrokerTaskScheduler`
+     * injection: the lazy JDK proxy has no reflection metadata in the native image.
+     */
+    @Bean
+    ThreadPoolTaskScheduler stompHeartbeatScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("stomp-heartbeat-");
+        return scheduler;
     }
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
         config.enableSimpleBroker("/topic")
             .setHeartbeatValue(STOMP_HEARTBEAT_MILLIS)
-            .setTaskScheduler(messageBrokerTaskScheduler);
+            .setTaskScheduler(stompHeartbeatScheduler());
         // Deltas must reach each client in publish order; the 16-thread outbound pool reorders otherwise
         config.setPreservePublishOrder(true);
         config.setApplicationDestinationPrefixes("/app");

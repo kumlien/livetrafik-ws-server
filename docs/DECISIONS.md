@@ -17,7 +17,7 @@
 - **Actuator exposure**: port 9001 exposes only `health,info` because it is public via the Cloudflare Tunnel (2026-10-17, `2e2049d`).
 - **Subscribe-only clients**: `WebSocketConfig.RejectClientSendInterceptor` drops every client STOMP SEND (counter `trafik.stomp.inbound.rejected`); the simple broker would otherwise relay client frames on `/topic/**` to all subscribers (2026-10-17).
 
-- **STOMP heartbeats 10 s/10 s**: simple broker uses `messageBrokerTaskScheduler`; matches Bussig's client request, and sessions silent for 30 s (3× interval) are closed (2026-10-17).
+- **STOMP heartbeats 10 s/10 s**: simple broker uses its own `stompHeartbeatScheduler` bean (Spring's `@Lazy messageBrokerTaskScheduler` pattern breaks the native image); matches Bussig's client request, and sessions silent for 30 s (3× interval) are closed (2026-10-17).
 
 - **Publish order per client**: `preservePublishOrder(true)`, so deltas on one session never overtake each other in the 16-thread outbound pool (2026-10-17).
 
