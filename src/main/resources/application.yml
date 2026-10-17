@@ -22,7 +22,8 @@ management:
   endpoints:
     web:
       exposure:
-        include: '*'
+        # Port 9001 is public via Cloudflare Tunnel – expose only probes
+        include: health,info
 
 monitoring:
   server-id: ${SERVER_ID:pi-proxy-1}
