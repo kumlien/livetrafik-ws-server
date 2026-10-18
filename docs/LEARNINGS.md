@@ -25,5 +25,6 @@
 ## Process & Tooling
 
 - **Deploy workflow** – use `native-deploy.yml`; `deploy.yml` always fails (`download-artifact@v4` without run-id sees only its own run's artifacts).
-- **Deploy needs a human** – `native-deploy.yml` blocks on `cloudflared access login`; open the URL from the job log.
+- **Deploy needs a human** – `native-deploy.yml` blocks on `cloudflared access login`; open the URL from the job log. The URL shows only in the live log on github.com, since `gh run view --log` is empty until the job finishes. Agents in auto mode are blocked from dispatching it, so the user runs `! gh workflow run native-deploy.yml`.
+- **Deploy takes the latest green build** – `native-deploy.yml` downloads the newest successful `native-arm64.yml` artifact, not a chosen run. Dispatch it only after the build is green, or the Pi gets the previous binary.
 - **Pi access is browser-only** (Raspberry Pi Connect) – hand the user read-only commands; hash secrets with `sha256sum`, never print them.
