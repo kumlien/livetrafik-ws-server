@@ -1,6 +1,6 @@
 # Project State
 
-Last Updated: 2026-10-17 20:22
+Last Updated: 2026-10-18 07:45
 
 ## Current Phase
 
@@ -15,11 +15,11 @@ Status: On Track
 
 ## Recently Completed
 
-- **2e2049d** (2026-10-17): Actuator exposure limited to `health,info`.
+- **aacc0e2** deployed to the Pi (2026-10-18, build run 39100983427, deploy run 39101489316): actuator `health,info` only (metrics/env 404), client SEND dropped, STOMP heartbeats `10000,10000`, reconnect leak fix, publish order.
 
 ## Blockers
 
-- Not deployed: actuator fix `2e2049d`, STOMP SEND block `43a3001`, reconnect leak fix `cadb38b`, STOMP heartbeats `5f745ba`, publish order. Run `native-arm64.yml` then `native-deploy.yml`, and verify that `https://trafik-ws.svante-for-the.win/actuator` lists only `health` and `info`.
+- None.
 
 ## Recent Decisions
 
