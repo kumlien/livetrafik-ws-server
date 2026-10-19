@@ -3,7 +3,6 @@ package se.kumliens.livetrafik;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -15,7 +14,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +27,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import se.kumliens.livetrafik.VehicleCacheService.CacheMetrics;
+import se.kumliens.livetrafik.config.SupabaseProperties;
 import se.kumliens.livetrafik.model.VehicleBroadcastPayload;
 
 /**
@@ -48,22 +47,9 @@ public class SupabaseRealtimeService {
     private final Timer stompDispatchTimer;
     private final Counter stompDispatchCounter;
     private final Counter supabasePayloadCounter;
-    
-    @Value("${supabase.url}")
-    private String supabaseWsUrl;
-    
-    @Value("${supabase.anon-key}")
-    private String supabaseAnonKey;
-    
-    @Value("${supabase.channel:}")
-    private String channelNamesProperty;
-    
-    @Value("${supabase.regions:ul,sl}")
-    private String regionsProperty;
-    
-    @Value("${supabase.vehicle-types:bus,train}")
-    private String vehicleTypesProperty;
-    
+    private final SupabaseProperties supabaseProperties;
+    private final List<String> channelNames;
+
     private WebSocketClient wsClient;
     long reconnectDelayMillis = 5_000;
     // One shared scheduler for Phoenix heartbeats and reconnects; per-attempt executors leaked a thread each
@@ -78,15 +64,18 @@ public class SupabaseRealtimeService {
     private final AtomicInteger messageRef = new AtomicInteger(1);
     private final AtomicLong relayedMessages = new AtomicLong();
     private volatile boolean supabaseConnected;
-    private List<String> channelNames = List.of();
-    private List<String> activeRegions = List.of("ul", "sl");
-    private List<String> vehicleTypes = List.of("bus", "train");
 
     public SupabaseRealtimeService(
+            SupabaseProperties supabaseProperties,
             VehicleCacheService vehicleCacheService,
             ObjectMapper objectMapper,
             SimpMessagingTemplate messagingTemplate,
             MeterRegistry meterRegistry) {
+        if (supabaseProperties.getAnonKey() == null || supabaseProperties.getAnonKey().isBlank()) {
+            throw new IllegalStateException("supabase.anon-key is empty – set SUPABASE_ANON_KEY");
+        }
+        this.supabaseProperties = supabaseProperties;
+        this.channelNames = resolveChannelNames(supabaseProperties);
         this.vehicleCacheService = vehicleCacheService;
         this.objectMapper = objectMapper;
         this.messagingTemplate = messagingTemplate;
@@ -115,11 +104,8 @@ public class SupabaseRealtimeService {
      */
     @PostConstruct
     public void connect() {
-        String fullUrl = supabaseWsUrl + "?apikey=" + supabaseAnonKey + "&vsn=1.0.0";
-        this.activeRegions = resolveList(regionsProperty, List.of("ul", "sl"));
-        this.vehicleTypes = resolveList(vehicleTypesProperty, List.of("bus", "train"));
-        this.channelNames = resolveChannelNames();
-        
+        String fullUrl = supabaseProperties.getUrl() + "?apikey=" + supabaseProperties.getAnonKey() + "&vsn=1.0.0";
+
         try {
             wsClient = new WebSocketClient(new URI(fullUrl)) {
                 @Override
@@ -201,7 +187,7 @@ public class SupabaseRealtimeService {
         }, 30, 30, TimeUnit.SECONDS);
     }
     
-    private void handleMessage(String message) {
+    void handleMessage(String message) {
         try {
             JsonNode root = objectMapper.readTree(message);
             String event = root.path("event").asText();
@@ -247,9 +233,9 @@ public class SupabaseRealtimeService {
         log.debug("Forwarded payload to {}", stompTopic);
         relayedMessages.incrementAndGet();
 
-        ChannelDescriptor descriptor = ChannelDescriptor.from(channel);
-        if (descriptor.type() == null) {
-            // Combined region feed – no cache update to avoid duplicate legacy broadcasts
+        ChannelDescriptor descriptor = ChannelDescriptor.parse(channel);
+        if (descriptor == null) {
+            log.debug("Relayed but not cached: {}", channel);
             return;
         }
 
@@ -290,30 +276,21 @@ public class SupabaseRealtimeService {
         }, reconnectDelayMillis, TimeUnit.MILLISECONDS);
     }
 
-    private List<String> resolveChannelNames() {
-        List<String> explicitChannels = resolveList(channelNamesProperty, List.of());
-        if (!explicitChannels.isEmpty()) {
-            return explicitChannels;
+    private static List<String> resolveChannelNames(SupabaseProperties properties) {
+        if (!properties.getChannel().isEmpty()) {
+            properties.getChannel().stream()
+                .filter(channel -> ChannelDescriptor.parse(channel) == null)
+                .forEach(channel -> log.warn("Channel {} is not <region>/vehicles/<type>; it is relayed but not cached", channel));
+            return properties.getChannel();
         }
 
         List<String> channels = new ArrayList<>();
-        for (String region : activeRegions) {
-            for (String type : vehicleTypes) {
+        for (String region : properties.getRegions()) {
+            for (String type : properties.getVehicleTypes()) {
                 channels.add(region + "/vehicles/" + type);
             }
         }
         return channels;
-    }
-
-    private List<String> resolveList(String csv, List<String> defaults) {
-        if (csv == null || csv.isBlank()) {
-            return defaults;
-        }
-        List<String> values = Arrays.stream(csv.split(","))
-            .map(String::trim)
-            .filter(s -> !s.isEmpty())
-            .toList();
-        return values.isEmpty() ? defaults : values;
     }
 
     private String extractChannel(String topic) {
@@ -324,24 +301,13 @@ public class SupabaseRealtimeService {
     }
 
     private record ChannelDescriptor(String region, String type) {
-        static ChannelDescriptor from(String channel) {
-            if (channel == null || channel.isBlank()) {
-                return new ChannelDescriptor("ul", "bus");
+        /** Returns null for anything but {region}/vehicles/{type}, so no cache is filled under a guessed key. */
+        static ChannelDescriptor parse(String channel) {
+            String[] parts = channel.split("/", -1);
+            if (parts.length != 3 || parts[0].isBlank() || parts[2].isBlank()) {
+                return null;
             }
-            String[] slashParts = channel.split("/");
-            if (slashParts.length >= 3) {
-                return new ChannelDescriptor(slashParts[0], slashParts[2]);
-            }
-            if (slashParts.length == 2) {
-                return new ChannelDescriptor(slashParts[0], null);
-            }
-
-            // Fallback for legacy dash-separated names
-            String[] dashParts = channel.split("-");
-            if (dashParts.length >= 3) {
-                return new ChannelDescriptor(dashParts[2], dashParts[dashParts.length - 1]);
-            }
-            return new ChannelDescriptor(dashParts[0], "bus");
+            return new ChannelDescriptor(parts[0], parts[2]);
         }
     }
     

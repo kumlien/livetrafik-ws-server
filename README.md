@@ -96,7 +96,7 @@ export SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIs..."
 export SUPABASE_REGIONS="ul,sl"
 export SUPABASE_VEHICLE_TYPES="bus,train"
 # valfritt: overridea kanaler helt
-# export SUPABASE_CHANNEL="vehicle-updates-vt-bus,vehicle-updates-vt-train"
+# export SUPABASE_CHANNEL="vt/vehicles/bus,vt/vehicles/train"  # andra format vidarebefordras men cachas inte
 # Heartbeat/monitoring overrides
 # export SERVER_ID="pi-proxy-1"
 # export APP_VERSION="1.3.7"

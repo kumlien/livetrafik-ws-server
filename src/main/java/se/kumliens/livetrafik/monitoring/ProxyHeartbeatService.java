@@ -10,7 +10,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,19 +20,18 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import se.kumliens.livetrafik.SupabaseRealtimeService;
 import se.kumliens.livetrafik.config.MonitoringProperties;
+import se.kumliens.livetrafik.config.SupabaseProperties;
 
 @Service
 @Slf4j
 public class ProxyHeartbeatService {
 
     private final MonitoringProperties monitoringProperties;
+    private final SupabaseProperties supabaseProperties;
     private final SupabaseRealtimeService supabaseRealtimeService;
     private final WebSocketConnectionTracker connectionTracker;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
-
-    @Value("${supabase.anon-key}")
-    private String supabaseAnonKey;
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "proxy-heartbeat");
@@ -46,12 +44,14 @@ public class ProxyHeartbeatService {
 
     public ProxyHeartbeatService(
         MonitoringProperties monitoringProperties,
+        SupabaseProperties supabaseProperties,
         SupabaseRealtimeService supabaseRealtimeService,
         WebSocketConnectionTracker connectionTracker,
         ObjectMapper objectMapper,
         HttpClient httpClient
     ) {
         this.monitoringProperties = monitoringProperties;
+        this.supabaseProperties = supabaseProperties;
         this.supabaseRealtimeService = supabaseRealtimeService;
         this.connectionTracker = connectionTracker;
         this.objectMapper = objectMapper;
@@ -103,8 +103,8 @@ public class ProxyHeartbeatService {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
             .uri(URI.create(monitoringProperties.getHeartbeat().getUrl()))
             .header("Content-Type", "application/json")
-            .header("Authorization", "Bearer " + supabaseAnonKey)
-            .header("apikey", supabaseAnonKey)
+            .header("Authorization", "Bearer " + supabaseProperties.getAnonKey())
+            .header("apikey", supabaseProperties.getAnonKey())
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .timeout(Duration.ofSeconds(10));
         String secret = monitoringProperties.getHeartbeat().getSecret();

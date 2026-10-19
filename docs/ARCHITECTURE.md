@@ -7,7 +7,7 @@ Single-process relay between Supabase Realtime and Bussig's browser clients (`..
 
 | Component | Responsibility | Key Files/Dirs |
 |-----------|---------------|----------------|
-| `SupabaseRealtimeService` | Phoenix-protocol client: `phx_join` per channel, 30 s `phoenix` heartbeat, reconnect 5 s after close; forwards `vehicles` broadcasts to STOMP and feeds the cache (only typed 3-segment channels; `ChannelDescriptor` also parses legacy dash-separated names); latency/dispatch meters | `src/main/java/se/kumliens/livetrafik/SupabaseRealtimeService.java` |
+| `SupabaseRealtimeService` | Phoenix-protocol client: `phx_join` per channel, 30 s `phoenix` heartbeat, reconnect 5 s after close; forwards `vehicles` broadcasts to STOMP and feeds the cache (only `{region}/vehicles/{type}` channels; any other name is relayed but not cached); latency/dispatch meters | `src/main/java/se/kumliens/livetrafik/SupabaseRealtimeService.java` |
 | `VehicleCacheService` | Per-(region, type) `ConcurrentHashMap` keyed by `vehicle_id`; remove-first → upsert → stale cleanup; combined bus+train snapshot per region | `.../VehicleCacheService.java` |
 | `VehicleBroadcastPayload` | Tolerant DTO for the delta payload (missing lists → empty; region/type backfilled from channel) | `.../model/VehicleBroadcastPayload.java` |
 | `VehicleController` | `GET /api/latest/{region}`, `GET /api/health` (CORS `*`) | `.../VehicleController.java` |

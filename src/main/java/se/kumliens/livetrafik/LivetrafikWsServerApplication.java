@@ -10,10 +10,11 @@ import org.springframework.context.annotation.ImportRuntimeHints;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import se.kumliens.livetrafik.config.MonitoringProperties;
+import se.kumliens.livetrafik.config.SupabaseProperties;
 
 @SpringBootApplication
 @ImportRuntimeHints(se.kumliens.livetrafik.config.LivetrafikRuntimeHints.class)
-@EnableConfigurationProperties(MonitoringProperties.class)
+@EnableConfigurationProperties({MonitoringProperties.class, SupabaseProperties.class})
 @Slf4j
 public class LivetrafikWsServerApplication {
 

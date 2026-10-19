@@ -10,7 +10,8 @@ server:
 
 supabase:
   url: wss://wuwzjgqegoipxkoxjfhy.supabase.co/realtime/v1/websocket
-  anon-key: ${SUPABASE_ANON_KEY}
+  # Empty default so SupabaseRealtimeService fails with a clear message; property binding would keep an unresolved ${...} literal
+  anon-key: ${SUPABASE_ANON_KEY:}
   regions: ul,sl
   vehicle-types: bus,train
 

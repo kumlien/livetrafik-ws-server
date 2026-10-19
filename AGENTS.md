@@ -56,7 +56,7 @@ Detail: `docs/ARCHITECTURE.md` (components, data flow, testing), `docs/STACK.md`
 ### Conventions
 
 - **Layout**: services and the REST controller sit in the root package `se.kumliens.livetrafik`; Spring configuration in `config/`, DTOs in `model/`, health/heartbeat in `monitoring/`.
-- **Injection**: explicit constructors (no `@RequiredArgsConstructor`). Supabase settings use `@Value` fields, while `monitoring.*` uses `@ConfigurationProperties` (`MonitoringProperties`). New config groups should follow `MonitoringProperties`, which is the newer pattern.
+- **Injection**: explicit constructors (no `@RequiredArgsConstructor`). Config groups use `@ConfigurationProperties` classes (`MonitoringProperties`, `SupabaseProperties`); new groups follow them. The cache TTL (`vehicles.cache.ttl-minutes`) is the one remaining `@Value`.
 - **Logging**: Lombok `@Slf4j` (`WebSocketConnectionTracker` is the one class using `LoggerFactory` directly). Per-message logs are `debug`/`trace`; cache updates log as `[STOMP] vehicles update: region= type= received= removed= cacheSize=`.
 - **Metrics**: Micrometer meters are named `trafik.<area>.<what>` and built in constructors. Timers publish p50/p90/p95/p99 plus a histogram with explicit min/max expected values.
 - **Error handling**: WebSocket callbacks and the heartbeat catch and log; nothing propagates out of `onMessage` or scheduled tasks. Payload tolerance lives in the DTO getters (null → empty list).

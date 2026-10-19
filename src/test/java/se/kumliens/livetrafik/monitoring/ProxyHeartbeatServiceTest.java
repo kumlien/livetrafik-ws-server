@@ -8,26 +8,31 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import se.kumliens.livetrafik.SupabaseRealtimeService;
 import se.kumliens.livetrafik.config.MonitoringProperties;
+import se.kumliens.livetrafik.config.SupabaseProperties;
 
 class ProxyHeartbeatServiceTest {
 
+    private static SupabaseProperties supabaseProperties() {
+        SupabaseProperties properties = new SupabaseProperties();
+        properties.setAnonKey("anon-key");
+        return properties;
+    }
+
     private static ProxyHeartbeatService serviceWith(MonitoringProperties properties) {
-        ProxyHeartbeatService service = new ProxyHeartbeatService(
+        return new ProxyHeartbeatService(
             properties,
+            supabaseProperties(),
             mock(SupabaseRealtimeService.class),
             mock(WebSocketConnectionTracker.class),
             new ObjectMapper(),
             HttpClient.newHttpClient()
         );
-        ReflectionTestUtils.setField(service, "supabaseAnonKey", "anon-key");
-        return service;
     }
 
     @Test
@@ -65,6 +70,7 @@ class ProxyHeartbeatServiceTest {
 
         ProxyHeartbeatService service = new ProxyHeartbeatService(
             properties,
+            supabaseProperties(),
             supabaseRealtimeService,
             tracker,
             new ObjectMapper(),
