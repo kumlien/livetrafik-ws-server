@@ -24,7 +24,7 @@
 |---------|---------|-------|
 | Raspberry Pi 5 | Production host | systemd `livetrafik-ws.service`, binary `/opt/livetrafik/trafik-websocket-server-linux-arm64`, port 9001 |
 | GraalVM native image | Production artifact | `native` Maven profile, native-maven-plugin 0.10.6, AOT hints in `LivetrafikRuntimeHints` |
-| Cloudflare Tunnel | Public exposure of :9001 | `trafik-ws.svante-for-the.win`; SSH for deploys via Cloudflare Access at `trafik-ssh.svante-for-the.win` |
+| Cloudflare Tunnel | Public exposure of :9001 | `trafik-ws.svante-for-the.win`; SSH for deploys at `trafik-ci-ssh.svante-for-the.win` (Access, service tokens only); interactive SSH at `trafik-ssh.svante-for-the.win` |
 | GitHub Actions | CI, native ARM64 build, deploy | `.github/workflows/` (runner `ubuntu-24.04-arm` for native) |
 
 ## External Services

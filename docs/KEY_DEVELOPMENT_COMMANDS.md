@@ -30,5 +30,5 @@ Application URL: `http://localhost:9001` (STOMP: `/ws` SockJS, `/ws-native` plai
 | `./mvnw clean package -DskipTests` | JAR in `target/` |
 | `./mvnw -Pnative -DskipTests package` | Native binary `target/trafik-websocket-server-linux-arm64` (GraalVM 25) |
 | `gh workflow run native-arm64.yml [-f create_release=true -f version=X.Y.Z]` | Build the ARM64 native binary in Actions |
-| `gh workflow run native-deploy.yml` | Deploy the latest successful native artifact to the Pi and restart `livetrafik-ws.service`; needs an interactive Cloudflare Access login from the job log |
+| `gh workflow run native-deploy.yml` | Deploy the latest successful native artifact to the Pi and restart `livetrafik-ws.service` |
 | `journalctl -fu livetrafik-ws.service` (on the Pi) | Service logs |

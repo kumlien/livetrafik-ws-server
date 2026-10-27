@@ -14,6 +14,10 @@ jobs:
     name: Deploy native binary to Raspberry Pi
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Read by `cloudflared access ssh`; trafik-ci-ssh only admits Access service tokens
+      TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
     steps:
       - name: Download latest native binary artifact
@@ -33,28 +37,20 @@ jobs:
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared-linux-amd64.deb
 
-      - name: Cloudflare Access login (manual)
-        run: |
-          cloudflared access login https://trafik-ssh.svante-for-the.win
-          echo ""
-          echo "Öppna URL:en ovan i din webbläsare, logga in via Cloudflare Access."
-          echo "När sidan bekräftar att du är inloggad fortsätter workflowet."
-
       - name: Configure SSH client
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.PI_SSH_KEY }}" > ~/.ssh/id_ed25519_pi
           chmod 600 ~/.ssh/id_ed25519_pi
+          echo "${{ secrets.PI_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
 
           cat <<'EOF' >> ~/.ssh/config
           Host trafik-pi
-            HostName trafik-ssh.svante-for-the.win
+            HostName trafik-ci-ssh.svante-for-the.win
             User admin
             IdentityFile ~/.ssh/id_ed25519_pi
             IdentitiesOnly yes
             ProxyCommand cloudflared access ssh --hostname %h
-            StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
           EOF
 
       - name: Copy binary to /opt/livetrafik on Raspberry Pi
