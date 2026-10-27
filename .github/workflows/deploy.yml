@@ -21,6 +21,10 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    env:
+      # Read by `cloudflared access ssh`; trafik-ci-ssh only admits Access service tokens
+      TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
     steps:
       - name: Download native binary artifact
         uses: actions/download-artifact@v4
@@ -39,24 +43,19 @@ jobs:
           curl -sSL -o cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
 
-      - name: Cloudflare Access login (manual)
-        run: |
-          cloudflared access login https://trafik-ssh.svante-for-the.win
-          echo ""
-          echo "Öppna URL:en ovan i din webbläsare och godkänn inloggningen."
-          echo "När sidan bekräftar att du är inloggad kan jobben fortsätta."
-
       - name: Configure SSH client
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_KNOWN_HOSTS: ${{ secrets.PI_KNOWN_HOSTS }}
         run: |
           mkdir -p ~/.ssh
           printf "%s\n" "$PI_SSH_KEY" > ~/.ssh/id_ed25519_ci
           chmod 600 ~/.ssh/id_ed25519_ci
+          printf "%s\n" "$PI_KNOWN_HOSTS" >> ~/.ssh/known_hosts
 
           cat <<'EOF' >> ~/.ssh/config
           Host trafik-pi
-            HostName trafik-ssh.svante-for-the.win
+            HostName trafik-ci-ssh.svante-for-the.win
             User admin
             IdentityFile ~/.ssh/id_ed25519_ci
             IdentitiesOnly yes

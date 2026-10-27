@@ -98,6 +98,6 @@ JDK 25 must be on `JAVA_HOME`.
 - `./mvnw test -Dtest=VehicleCacheServiceTest#methodName` – single test
 - `SUPABASE_ANON_KEY=... ./mvnw spring-boot:run` – run on :9001 (fails without the key)
 - `./mvnw -Pnative -DskipTests package` – native binary (GraalVM 25)
-- `gh workflow run native-arm64.yml` then `gh workflow run native-deploy.yml` – build and deploy to the Pi (the deploy job waits for an interactive Cloudflare Access login)
+- `gh workflow run native-arm64.yml` then `gh workflow run native-deploy.yml` – build and deploy to the Pi (SSH via `trafik-ci-ssh` with an Access service token, no login)
 
 See also `docs/KEY_DEVELOPMENT_COMMANDS.md` for the full command reference.

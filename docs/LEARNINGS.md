@@ -25,6 +25,6 @@
 ## Process & Tooling
 
 - **Deploy workflow** – use `native-deploy.yml`; `deploy.yml` always fails (`download-artifact@v4` without run-id sees only its own run's artifacts).
-- **Deploy needs a human** – `native-deploy.yml` blocks on `cloudflared access login`; open the URL from the job log. The URL shows only in the live log on github.com, since `gh run view --log` is empty until the job finishes. Agents in auto mode are blocked from dispatching it, so the user runs `! gh workflow run native-deploy.yml`.
+- **Deploy SSH uses a service token** – the workflows reach the Pi through `trafik-ci-ssh.svante-for-the.win`, whose Access policy admits only service tokens (`CF_ACCESS_CLIENT_ID`/`SECRET`, read by `cloudflared` as `TUNNEL_SERVICE_TOKEN_*`). A token missing from that policy fails with an Access 403, not an SSH error. The host key is pinned via `PI_KNOWN_HOSTS`. Agents in auto mode are blocked from dispatching the deploy, so the user runs `! gh workflow run native-deploy.yml`.
 - **Deploy takes the latest green build** – `native-deploy.yml` downloads the newest successful `native-arm64.yml` artifact, not a chosen run. Dispatch it only after the build is green, or the Pi gets the previous binary.
 - **Pi access is browser-only** (Raspberry Pi Connect) – hand the user read-only commands; hash secrets with `sha256sum`, never print them.
